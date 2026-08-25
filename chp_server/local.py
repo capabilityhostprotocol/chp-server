@@ -13,6 +13,37 @@ the full 12-gate admission on invocation.
 from __future__ import annotations
 
 
+class ExistingHostPort:
+    """Serve a pre-built governed host (doc 00 host-vs-server separation).
+
+    Wraps a caller-supplied ``LocalCapabilityHost`` — already built and populated
+    by the embedder (its capabilities, evidence store, host key, host_id) — so the
+    Server projects it (/server, /ready, feature truth, drain) without rebuilding
+    or mutating it. One governed object fulfills Host+Admission+Execution+Evidence
+    (DEC-SRV-004). Attached programmatically (it wraps a live object; not an
+    entry-point/config-instantiable provider).
+    """
+
+    roles = ("HostPort", "AdmissionPort", "ExecutionPort", "EvidencePort")
+    source = "local"
+
+    def __init__(self, host) -> None:
+        if host is None:
+            raise ValueError("ExistingHostPort requires a governed host to serve")
+        self.host = host
+
+    def validate(self) -> None:
+        if not hasattr(self.host, "ainvoke_envelope"):
+            raise ValueError("ExistingHostPort.host is not a governed CHP host")
+
+    def health(self) -> str:
+        return "ready"
+
+    def stop(self) -> None:
+        # The host is owned by the embedder, not the port — never close it here.
+        pass
+
+
 class LocalArtifactPort:
     """Artifact data plane for the served host: attaches a content-addressed
     chp_core.ArtifactStore so /artifacts transfer lights up (artifact.transfer

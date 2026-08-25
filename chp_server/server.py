@@ -50,6 +50,22 @@ class ServerStatus:
 class Server:
     """Programmatic server. `chp serve` is a CLI wrapper over this lifecycle."""
 
+    @classmethod
+    def serving(cls, host, *, profile: str = "host", **config_kwargs) -> "Server":
+        """Build a Server that serves an ALREADY-built governed host.
+
+        The embedder owns the host (its capabilities, evidence store, host key,
+        host_id); the server projects it (/server, /ready, feature truth, drain)
+        without rebuilding or mutating it — the host-vs-server seam. `config_kwargs`
+        (bind/port/store/tls_*/environment) go to ServerConfig; host_id defaults to
+        the host's own id so the trust chain is unambiguous.
+        """
+        from .local import ExistingHostPort
+        config_kwargs.setdefault("host_id", getattr(host, "host_id", "chp-server"))
+        server = cls(ServerConfig(profile=profile, **config_kwargs))
+        server.attach(ExistingHostPort(host))
+        return server
+
     def __init__(self, config: ServerConfig | None = None) -> None:
         self.config = config or ServerConfig()
         self.identity = ServerInstanceIdentity()

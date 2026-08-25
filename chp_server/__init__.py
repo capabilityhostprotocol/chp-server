@@ -13,7 +13,7 @@ from .introduction import (
     IntroductionCoordinator,
     RemoteChpIntroductionSource,
 )
-from .local import LocalArtifactPort, LocalStandalonePorts
+from .local import ExistingHostPort, LocalArtifactPort, LocalStandalonePorts
 from .ports import ENTRY_POINT_GROUP, PORT_ROLES, Attachment, AttachmentRegistry
 from .profiles import CONFORMANCE_MANIFEST, PROFILES, validate_profile
 from .server import Server, ServerInstanceIdentity, ServerStatus
@@ -24,6 +24,7 @@ __all__ = [
     "CONFORMANCE_MANIFEST",
     "ENTRY_POINT_GROUP",
     "EntryPointIntroductionPort",
+    "ExistingHostPort",
     "IntroductionCoordinator",
     "LocalArtifactPort",
     "FEATURES",
