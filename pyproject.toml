@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chp-server"
+version = "0.60.2.dev0"
+description = "Independently installable reference CHP server: assembles chp-core plus optional attachments behind truthful feature negotiation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Project Auxo, Inc." }]
+keywords = ["chp", "capability-host-protocol", "server", "governance", "evidence"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Distributed Computing",
+]
+# THE dependency rule (docs 34/38, DEC-SRV-001): chp-core is the ONLY mandatory
+# CHP dependency. Optional CHP packages attach via the chp_server.ports entry-point
+# group; adding one here is a PKG-009 violation and needs an approved decision.
+# Floor = last released core with the handler_class seam's prerequisites; the
+# seam itself ships in the next train release (dev tree satisfies it editable).
+dependencies = ["chp-core>=0.60.0"]
+
+[project.urls]
+Homepage = "https://github.com/capabilityhostprotocol/chp-server"
+Issues = "https://github.com/capabilityhostprotocol/chp-server/issues"
+
+[project.scripts]
+chp-server = "chp_server.cli:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
