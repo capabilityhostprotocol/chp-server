@@ -67,6 +67,23 @@ def test_stop_does_not_close_the_embedders_host(tmp_path):
     assert r.outcome == "success"
 
 
+def test_serving_builds_no_cwd_store(tmp_path, monkeypatch):
+    # Regression (rad:f061723): an embedded node agent runs from a read-only CWD.
+    # serving() must never build the fallback _backing_host's store there — the
+    # real host owns the evidence. Caught live by the m1-a canary (OSError EROFS).
+    import os
+    workdir = tmp_path / "ro-cwd"; workdir.mkdir()
+    monkeypatch.chdir(workdir)
+    host = _prebuilt_host(tmp_path)
+    server = Server.serving(host, profile="edge", port=0)
+    server.start()
+    try:
+        assert server.ready()["ready"] is True
+        assert not (workdir / ".chp").exists()  # no store written to CWD
+    finally:
+        server.stop()
+
+
 def test_existing_host_port_rejects_non_host():
     with pytest.raises(ValueError):
         ExistingHostPort(None)

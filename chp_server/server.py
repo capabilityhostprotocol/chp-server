@@ -75,12 +75,22 @@ class Server:
         self.config_generation = 1
         self._http = None
         self._thread: threading.Thread | None = None
-        # The protocol surface needs a governed host object even with zero
-        # capabilities: a bare LocalCapabilityHost executes nothing and denies
-        # truthfully through the canonical 12-gate pipeline (nothing is fabricated).
-        store = SQLiteEvidenceStore(self.config.store) if self.config.store else SQLiteEvidenceStore()
-        self._backing_host = LocalCapabilityHost(
-            host_id=self.config.host_id, version=_dist_version("chp-server"), store=store)
+        self._backing_host_cache = None
+
+    @property
+    def _backing_host(self):
+        # A bare zero-capability host that executes nothing and denies truthfully
+        # through the 12-gate pipeline — the protocol surface's fallback when NO
+        # HostPort is attached. Built LAZILY: when serving an existing host it is
+        # never touched, so an embedded node agent with a read-only working dir does
+        # not crash building a redundant CWD store (the real host owns the evidence).
+        # ":memory:" default since this fallback host holds no durable evidence.
+        if self._backing_host_cache is None:
+            store = (SQLiteEvidenceStore(self.config.store) if self.config.store
+                     else SQLiteEvidenceStore(":memory:"))
+            self._backing_host_cache = LocalCapabilityHost(
+                host_id=self.config.host_id, version=_dist_version("chp-server"), store=store)
+        return self._backing_host_cache
 
     # -- assembly -----------------------------------------------------------
     def attach(self, attachment) -> None:
