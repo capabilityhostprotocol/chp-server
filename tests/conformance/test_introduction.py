@@ -114,16 +114,50 @@ def test_intro_007_008_failed_refresh_keeps_previous_generation(host, monkeypatc
     assert good["generation_active"] == "g3"  # complete refresh switches atomically
 
 
-def test_intro_011_detach_withdraws_only_source_owned_facts(host, tmp_path):
+def test_intro_011_detach_withdraws_only_source_owned_facts(host, tmp_path, monkeypatch):
+    import chp_core.adapters as adapters
+    monkeypatch.setattr(adapters, "discover_adapters", lambda group=None: {"fake": FakeAdapter})
     coord = IntroductionCoordinator(host, registry_path=str(tmp_path / "r.json"))
-    for src, cap in (("a", "cap.one"), ("b", "cap.two")):
-        payload = {"id": cap}
-        coord.activate(_batch(src, [{
-            "candidate_id": f"def:{cap}", "fact_class": "definition",
-            "payload": payload, "canonical_digest": canonical_digest(payload)}]))
+    coord.activate(_batch("a", [_supply_candidate()]))
+    payload = {"id": "cap.two"}
+    coord.activate(_batch("b", [{
+        "candidate_id": "def:cap.two", "fact_class": "definition",
+        "payload": payload, "canonical_digest": canonical_digest(payload)}]))
     out = coord.detach("a")
-    assert out["withdrawn"] == ["def:cap.one"]
+    assert out["withdrawn"] == ["supply:fake"]
+    assert out["supply_disabled"] == ["fake.hello:1.0.0"]  # LIVE supply withdrawn
     assert "def:cap.two" in coord.active  # other sources untouched (source isolation)
+
+
+def test_intro_044_045_withdraw_supply_vs_retire(host, monkeypatch):
+    """Retirement distinguishes supply withdrawal from definition deletion, and
+    neither rewrites recorded execution truth (INTRO-046)."""
+    import asyncio
+
+    from chp_core import InvocationEnvelope
+
+    import chp_core.adapters as adapters
+    monkeypatch.setattr(adapters, "discover_adapters", lambda group=None: {"fake": FakeAdapter})
+    coord = IntroductionCoordinator(host)
+    coord.activate(_batch("src", [_supply_candidate()]))
+
+    def invoke(inv_id):
+        return asyncio.run(host.ainvoke_envelope(InvocationEnvelope(
+            capability_id="fake.hello", payload={"name": "x"}, invocation_id=inv_id)))
+
+    first = invoke("inv-keep")
+    assert first.outcome == "success"
+    # Withdraw supply: Gate 3 skip, definition/fact knowledge stays.
+    coord.withdraw_supply("supply:fake")
+    assert invoke("inv-2").outcome == "skipped"
+    assert coord.active["supply:fake"]["withdrawn"] is True
+    # Retire: registration gone, future invocations deny capability_not_found...
+    coord.retire("supply:fake")
+    denied = invoke("inv-3")
+    assert denied.outcome == "denied" and denied.denial.code == "capability_not_found"
+    # ...but the recorded invocation still replays (execution truth intact).
+    replayed = invoke("inv-keep")
+    assert replayed.outcome == "success" and replayed.data == first.data
 
 
 def test_intro_013_introduced_capability_still_passes_admission(tmp_path, monkeypatch):

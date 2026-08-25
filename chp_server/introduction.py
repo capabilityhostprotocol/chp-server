@@ -12,9 +12,11 @@ verbatim. Activation integrates only through authoritative chp-core surfaces:
   ``chp_core.registry`` — the authoritative known-package manifest
   (INTRO-001: definition accepted, no executable supply implied).
 
-Withdrawal-in-place is an upstream gap: LocalCapabilityHost has no
-deregistration surface, so a detached source's ACTIVE registrations persist
-until process restart (GAP-SRV-004); future generations stop flowing.
+Withdrawal rides the host's withdrawal surface (closed GAP-SRV-004):
+``withdraw_supply`` disables live registrations (Gate 3 denies
+capability_disabled; definition knowledge survives — INTRO-045), ``retire``
+unregisters them (capability_not_found), and neither ever rewrites recorded
+execution truth.
 
 Introduction authority is the admin/config plane (doc 77 §6): nothing here is
 reachable by protocol clients, and the built-in source only introduces
@@ -109,8 +111,9 @@ class IntroductionCoordinator:
                 if source_id not in self.active[cid]["sources"]:
                     self.active[cid]["sources"].append(source_id)
                 continue
+            registered_uris: list[str] = []
             if cand["fact_class"] == "supply":
-                self._activate_supply(cand)
+                registered_uris = self._activate_supply(cand)
             elif cand["fact_class"] == "definition":
                 self._activate_definition(cand)
             # binding/readiness/semantic_mapping: no authoritative local owner yet
@@ -118,12 +121,13 @@ class IntroductionCoordinator:
             # facts only, no live-state integration.
             self.active[cid] = {"fact_class": cand["fact_class"], "payload": cand["payload"],
                                 "digest": digest, "sources": [source_id],
-                                "generation": batch["generation"]}
+                                "generation": batch["generation"],
+                                "registered_uris": registered_uris}
             activated.append(cid)
         self.generations[source_id] = batch["generation"]
         return {**report, "activated": activated, "generation_active": batch["generation"]}
 
-    def _activate_supply(self, cand: dict) -> None:
+    def _activate_supply(self, cand: dict) -> list[str]:
         from chp_core.adapters import discover_adapters, register_adapter
         if self._host is None:
             raise IntroductionError("supply activation requires a governed host")
@@ -131,7 +135,10 @@ class IntroductionCoordinator:
         cls = discover_adapters().get(name)
         if cls is None:
             raise IntroductionError(f"adapter {name!r} is not installed")
-        register_adapter(self._host, cls())  # duplicates skipped upstream, never overwritten
+        # Duplicates skipped upstream, never overwritten; the returned NEW
+        # registrations are what this fact owns for later withdrawal.
+        registered = register_adapter(self._host, cls())
+        return [d.capability_uri for d in registered]
 
     def _activate_definition(self, cand: dict) -> None:
         # Known-package manifest (chp_core.registry) is the definition-only home;
@@ -145,18 +152,40 @@ class IntroductionCoordinator:
                                     tags=list(p.get("tags", []))),
                       self._registry_path)
 
+    # -- withdrawal / retirement (INTRO-044/045) -----------------------------
+    def withdraw_supply(self, candidate_id: str) -> list[str]:
+        """Withdraw a fact's LIVE supply (host.set_enabled False) while keeping
+        the fact and any definition knowledge — supply withdrawal is not
+        definition deletion (INTRO-045)."""
+        fact = self.active[candidate_id]
+        for uri in fact.get("registered_uris", []):
+            self._host.set_enabled(uri, False)
+        fact["withdrawn"] = True
+        return list(fact.get("registered_uris", []))
+
+    def retire(self, candidate_id: str) -> list[str]:
+        """Retire a fact entirely: unregister live supply and drop the active
+        fact. Definition-only registry knowledge and all recorded evidence
+        remain — retirement never rewrites execution truth."""
+        fact = self.active.pop(candidate_id)
+        for uri in fact.get("registered_uris", []):
+            self._host.unregister(uri)
+        return list(fact.get("registered_uris", []))
+
     def detach(self, source_id: str) -> dict:
-        """Source-scoped detach: future generations stop; facts solely from this
-        source are marked withdrawn in the introduction plane. Live host
-        registrations persist until restart — GAP-SRV-004 (no deregistration
-        surface upstream)."""
+        """Source-scoped detach: future generations stop, and facts owned SOLELY
+        by this source have their live supply withdrawn (coalesced facts with
+        other valid provenance are untouched — INTRO-037)."""
         withdrawn = [cid for cid, fact in self.active.items()
                      if fact["sources"] == [source_id]]
+        disabled: list[str] = []
         for cid in withdrawn:
-            del self.active[cid]
+            fact = self.active.pop(cid)
+            for uri in fact.get("registered_uris", []):
+                self._host.set_enabled(uri, False)
+                disabled.append(uri)
         self.generations.pop(source_id, None)
-        return {"withdrawn": withdrawn,
-                "note": "active host registrations persist until restart (GAP-SRV-004)"}
+        return {"withdrawn": withdrawn, "supply_disabled": disabled}
 
 
 class EntryPointIntroductionPort:
