@@ -27,6 +27,26 @@ PROFILES: dict[str, dict] = {
 }
 
 
+# Per-profile conformance manifest (doc 52 / CONF-005): each claimable profile
+# names the conformance scenario module(s) that gate a claim to it. Some live in
+# provider packages (chp-host, chp-platform) because the provider owns the
+# attachment; the manifest still records where the scenarios are.
+CONFORMANCE_MANIFEST: dict[str, list[str]] = {
+    "protocol-only": ["chp_server/tests/conformance/test_pkg_minimal.py"],
+    "host": ["chp_server/tests/test_server.py::test_hostport_attachment_host_is_served",
+             "chp-host/tests/test_server_port.py::test_entry_point_discovery_and_host_profile"],
+    "local": ["chp_server/tests/conformance/test_local_profile.py"],
+    "standalone": ["chp_server/tests/conformance/test_standalone_profile.py"],
+    "managed": ["chp-platform/tests/test_server_port.py::test_managed_resolution_feature_truth"],
+    "edge": ["chp_server/tests/conformance/test_edge_profile.py"],
+    "gateway": ["chp-host/tests/test_server_port.py::test_router_gateway_profile"],
+    "capability-introduction": ["chp_server/tests/conformance/test_introduction.py"],
+    "minimum-useful":
+        ["chp_server/tests/conformance/test_introduction.py::"
+         "test_intro_013_introduced_capability_still_passes_admission"],
+}
+
+
 def validate_profile(name: str, ready_roles: list[str]) -> list[str]:
     """Return the missing required roles (empty = profile claimable)."""
     if name not in PROFILES:
