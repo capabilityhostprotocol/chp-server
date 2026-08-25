@@ -35,4 +35,17 @@ def make_handler(server) -> type:
                 return
             super()._do_get()
 
+        def _do_post(self) -> None:
+            # LIFE-006: a draining server MUST stop accepting new work before
+            # shutdown. New invocations are refused with 503; in-flight work
+            # (already admitted) continues under its bound semantics.
+            from .server import ServerStatus
+            if self.chp_server.state == ServerStatus.DRAINING:
+                path = urlparse(self.path).path
+                if path == "/invoke":  # new work; /replay etc. are reads, still served
+                    self._write_error(HTTPStatus.SERVICE_UNAVAILABLE, "server_draining",
+                                      "server is draining; not accepting new invocations")
+                    return
+            super()._do_post()
+
     return ServerRequestHandler
