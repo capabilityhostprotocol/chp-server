@@ -81,10 +81,28 @@ class AttachmentRegistry:
                 a.validate()
 
     def start_all(self) -> None:
-        for a in self._attachments:
-            if hasattr(a, "start"):
-                a.start()
-            self._started.append(a)
+        # Dependency-ordered start (docs 42 §§4-5, ATT-003): an attachment may
+        # declare `requires = (<role>, ...)`; it starts only after some OTHER
+        # attachment fulfills those roles. Unsatisfiable/cyclic requirements are
+        # a startup error, not a hang.
+        pending = list(self._attachments)
+        while pending:
+            provided = {r for a in self._started for r in getattr(a, "roles", ())}
+            runnable = [a for a in pending
+                        if all(r in provided for r in getattr(a, "requires", ()))]
+            if not runnable:
+                missing = {a: [r for r in getattr(a, "requires", ())
+                               if r not in provided] for a in pending}
+                names = {type(a).__name__: m for a, m in missing.items()}
+                raise RuntimeError(
+                    f"attachment dependencies unsatisfiable (cycle or missing role): {names}")
+            for a in runnable:
+                if hasattr(a, "bind"):
+                    a.bind(self)
+                if hasattr(a, "start"):
+                    a.start()
+                self._started.append(a)
+                pending.remove(a)
 
     def stop_all(self) -> None:
         for a in reversed(self._started):

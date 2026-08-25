@@ -37,5 +37,10 @@ Issues = "https://github.com/capabilityhostprotocol/chp-server/issues"
 [project.scripts]
 chp-server = "chp_server.cli:main"
 
+# Built-in attachment providers, discovered like any external ones — the server
+# treats its own ports and third-party ports identically (doc 35).
+[project.entry-points."chp_server.ports"]
+local_standalone = "chp_server.local:LocalStandalonePorts"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
