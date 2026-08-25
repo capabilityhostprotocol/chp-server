@@ -31,11 +31,15 @@ FEATURE_ROLES: dict[str, tuple[str, ...]] = {
     "invocation.local": ("HostPort", "AdmissionPort", "ExecutionPort"),
     "invocation.observe": ("HostPort", "EvidencePort"),
     "invocation.streaming": ("HostPort", "AdmissionPort", "ExecutionPort"),
+    "invocation.remote": ("FederationPort",),
     "evidence.query": ("EvidencePort",),
     "evidence.verify": ("EvidencePort",),
     "artifact.transfer": ("ArtifactPort",),
     "federation": ("FederationPort",),
-    "mcp.import": ("McpPort",),
+    # Import and export are DIFFERENT bridges: exporting CHP capabilities as MCP
+    # tools exists (chp-host); importing MCP servers as capabilities does not.
+    # Separate roles keep mcp.import truthfully unsupported until one does.
+    "mcp.import": ("McpImportPort",),
     "mcp.export": ("McpPort",),
 }
 

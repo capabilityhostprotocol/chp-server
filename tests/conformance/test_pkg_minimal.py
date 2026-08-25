@@ -50,10 +50,14 @@ def test_pkg_004_local_execution_required_fails_explicitly(server):
 
 
 def test_pkg_005_local_resolution_fails_no_hidden_platform_call(server):
+    import sys
+    # Delta check: the failure itself must not import a Platform client. (In the
+    # clean venv chp_platform is absent outright; in-repo other suites may have
+    # imported it already, which is not this server's doing.)
+    before = "chp_platform" in sys.modules
     out = server.negotiate(["capability.resolve"])
     assert out["compatible"] is False
-    import sys
-    assert "chp_platform" not in sys.modules
+    assert ("chp_platform" in sys.modules) == before
 
 
 def test_pkg_006_healthy_without_platform(server):
