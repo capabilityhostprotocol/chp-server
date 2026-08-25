@@ -200,6 +200,58 @@ def test_intro_013_introduced_capability_still_passes_admission(tmp_path, monkey
         s.stop()
 
 
+def test_intro_042_remote_chp_advertisements_are_claims(tmp_path, monkeypatch):
+    """A peer server's catalog imports as origin-attributed definition CLAIMS —
+    local trust (allowlist) + freshness apply, and nothing becomes local supply."""
+    import chp_core.adapters as adapters
+    from chp_server import RemoteChpIntroductionSource
+
+    monkeypatch.setattr(adapters, "discover_adapters", lambda group=None: {"fake": FakeAdapter})
+
+    class GovernedHostPort:
+        roles = ("HostPort", "AdmissionPort", "ExecutionPort", "EvidencePort")
+        source = "local"
+        def __init__(self, host):
+            self.host = host
+        def health(self):
+            return "ready"
+
+    # The PEER: a live chp-server actually serving one capability.
+    peer_host = LocalCapabilityHost("peer", store=SQLiteEvidenceStore(str(tmp_path / "p.sqlite")))
+    peer = Server(ServerConfig(port=0, profile="host", store=str(tmp_path / "ps.sqlite")))
+    peer.attach(GovernedHostPort(peer_host))
+    peer.start()
+    try:
+        coord = IntroductionCoordinator(
+            LocalCapabilityHost("local", store=SQLiteEvidenceStore(str(tmp_path / "l.sqlite"))),
+            registry_path=str(tmp_path / "r.json"))
+        src = RemoteChpIntroductionSource(f"http://127.0.0.1:{peer.port}", max_age_s=3600)
+        # Empty peer catalog -> empty batch; register a capability on the peer, refresh.
+        peer_host.register(
+            CapabilityDescriptor(id="remote.cap", version="1.0.0", description="R."),
+            lambda _c, _p: None)
+        batch = src.snapshot()
+        batch["candidates"] = src.fresh_candidates(batch)
+        out = coord.activate(batch)
+        assert out["activated"] == ["remote-def:remote.cap"]
+        fact = coord.active["remote-def:remote.cap"]
+        assert fact["payload"]["origin_host"] == "peer" and fact["payload"]["claim"] is True
+        # Definition knowledge landed in the registry, disabled; NO local supply.
+        from chp_core.registry import load_registry
+        assert any(e.id == "remote.cap" and not e.enabled
+                   for e in load_registry(str(tmp_path / "r.json")))
+        # Local trust: an allowlist that excludes the capability imports nothing.
+        picky = RemoteChpIntroductionSource(f"http://127.0.0.1:{peer.port}",
+                                            capabilities=["other.cap"])
+        assert picky.snapshot()["candidates"] == []
+        # Freshness: a max_age of 0 makes every observation stale -> excluded.
+        stale = RemoteChpIntroductionSource(f"http://127.0.0.1:{peer.port}", max_age_s=0)
+        b = stale.snapshot()
+        assert stale.fresh_candidates(b) == []
+    finally:
+        peer.stop()
+
+
 def test_installation_is_never_introduction(tmp_path, monkeypatch):
     """Negative invariant: an installed adapter NOT on the allowlist is not
     introduced — and an empty allowlist refuses to validate at all."""

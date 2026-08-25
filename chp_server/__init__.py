@@ -8,7 +8,11 @@ an optional CHP package (PKG-009; enforced by tests/test_import_purity.py).
 
 from .config import ServerConfig
 from .features import FEATURES, FeatureDescriptor, FeatureRegistry
-from .introduction import EntryPointIntroductionPort, IntroductionCoordinator
+from .introduction import (
+    EntryPointIntroductionPort,
+    IntroductionCoordinator,
+    RemoteChpIntroductionSource,
+)
 from .local import LocalStandalonePorts
 from .ports import ENTRY_POINT_GROUP, PORT_ROLES, Attachment, AttachmentRegistry
 from .profiles import PROFILES, validate_profile
@@ -26,6 +30,7 @@ __all__ = [
     "LocalStandalonePorts",
     "PORT_ROLES",
     "PROFILES",
+    "RemoteChpIntroductionSource",
     "Server",
     "ServerConfig",
     "ServerInstanceIdentity",

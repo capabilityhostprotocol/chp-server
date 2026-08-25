@@ -188,6 +188,61 @@ class IntroductionCoordinator:
         return {"withdrawn": withdrawn, "supply_disabled": disabled}
 
 
+class RemoteChpIntroductionSource:
+    """Remote-CHP source (INTRO-042): a peer host's /host descriptor becomes
+    definition CLAIMS — origin-attributed, freshness-bounded, never supply.
+
+    Incorporation stays a local decision: an optional capability allowlist
+    filters the claims, ``max_age_s`` drops stale observations via the
+    authoritative freshness primitive (chp_core.temporal.assess_freshness),
+    and the resulting facts are definition knowledge only — invoking them
+    locally still requires real local supply and admission.
+    """
+
+    def __init__(self, url: str, *, source_id: str | None = None,
+                 api_key: str | None = None, capabilities: list[str] | None = None,
+                 max_age_s: int | None = None) -> None:
+        self._url = url
+        self.source_id = source_id or f"remote-chp:{url}"
+        self._api_key = api_key
+        self._allowlist = capabilities
+        self._max_age_s = max_age_s
+
+    def snapshot(self) -> dict:
+        from chp_core.http import RemoteCapabilityHost
+        from chp_core.types import utc_now
+        desc = RemoteCapabilityHost(self._url, api_key=self._api_key).discover()
+        observed_at = utc_now()
+        candidates = []
+        for cap in desc.get("capabilities", []):
+            if self._allowlist is not None and cap["id"] not in self._allowlist:
+                continue
+            payload = {"id": cap["id"], "version": cap.get("version"),
+                       "origin_host": desc.get("id"), "origin_url": self._url,
+                       "observed_at": observed_at, "claim": True}
+            candidates.append({"candidate_id": f"remote-def:{cap['id']}",
+                               "fact_class": "definition", "payload": payload,
+                               "canonical_digest": canonical_digest(
+                                   {k: payload[k] for k in ("id", "version", "origin_host")})})
+        return {"schema_version": BATCH_SCHEMA_VERSION, "source_id": self.source_id,
+                "generation": canonical_digest({"caps": [c["canonical_digest"]
+                                                          for c in candidates]})[:23],
+                "observed_at": observed_at, "complete_snapshot": True,
+                "candidates": candidates}
+
+    def fresh_candidates(self, batch: dict) -> list[dict]:
+        """Freshness filter: claims older than max_age_s are STALE and excluded
+        from incorporation (authoritative assess_freshness, never re-dated)."""
+        if self._max_age_s is None:
+            return list(batch["candidates"])
+        from chp_core.temporal import assess_freshness
+        from chp_core.types import utc_now
+        now = utc_now()
+        return [c for c in batch["candidates"]
+                if assess_freshness(c["payload"]["observed_at"], now,
+                                    self._max_age_s) == "fresh"]
+
+
 class EntryPointIntroductionPort:
     """Built-in CapabilitySource: installed ``chp.adapters`` entry points as a
     complete-snapshot batch, filtered by an explicit config allowlist —
