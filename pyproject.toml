@@ -41,6 +41,7 @@ chp-server = "chp_server.cli:main"
 # treats its own ports and third-party ports identically (doc 35).
 [project.entry-points."chp_server.ports"]
 local_standalone = "chp_server.local:LocalStandalonePorts"
+entry_point_introduction = "chp_server.introduction:EntryPointIntroductionPort"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

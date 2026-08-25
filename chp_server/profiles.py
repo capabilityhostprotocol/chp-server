@@ -20,6 +20,10 @@ PROFILES: dict[str, dict] = {
     "managed": {"required_roles": _LOCAL_ROLES},
     "edge": {"required_roles": _LOCAL_ROLES},
     "gateway": {"required_roles": ("FederationPort",)},
+    # v0.9 (docs 84/85): introduction-capable server; minimum-useful = at least
+    # one capability discoverable through a governed source.
+    "capability-introduction": {"required_roles": ("HostPort", "CapabilitySourcePort")},
+    "minimum-useful": {"required_roles": ("HostPort", "CapabilitySourcePort")},
 }
 
 

@@ -27,6 +27,7 @@ PORT_ROLES = (
     "SecretPort",
     "McpPort",
     "McpImportPort",
+    "CapabilitySourcePort",
 )
 
 ENTRY_POINT_GROUP = "chp_server.ports"
