@@ -65,6 +65,25 @@ def test_intro_001_definition_only_implies_no_supply(host, tmp_path):
     assert host.discover()["capabilities"] == []
 
 
+def test_intro_016_malformed_digest_rejected(host, tmp_path):
+    # A candidate whose declared canonical_digest is not a well-formed sha256
+    # commitment is refused at staging (integrity) — no live-state mutation.
+    coord = IntroductionCoordinator(host, registry_path=str(tmp_path / "r.json"))
+    tampered = {"candidate_id": "def:x", "fact_class": "definition",
+                "payload": {"id": "x", "version": "1.0"},
+                "canonical_digest": "sha256:deadbeef"}  # 8 hex, not 64 — malformed
+    report = coord.stage(_batch("bad", [tampered]))
+    assert report["valid"] is False
+    assert any("integrity" in e for e in report["errors"])
+    out = coord.activate(_batch("bad", [tampered]))
+    assert out["activated"] == [] and coord.active == {}
+    # A well-formed digest passes staging.
+    good_payload = {"id": "y", "version": "1.0"}
+    good = {"candidate_id": "def:y", "fact_class": "definition", "payload": good_payload,
+            "canonical_digest": canonical_digest(good_payload)}
+    assert coord.stage(_batch("ok", [good]))["valid"] is True
+
+
 def test_intro_003_malformed_candidate_rejected_without_mutation(host, tmp_path):
     coord = IntroductionCoordinator(host, registry_path=str(tmp_path / "r.json"))
     out = coord.activate(_batch("bad", [

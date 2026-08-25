@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from importlib.metadata import PackageNotFoundError, version as _dist_version
 
 BATCH_SCHEMA_VERSION = "0.9"
@@ -76,6 +77,16 @@ class IntroductionCoordinator:
                 continue
             if cand.get("fact_class") == "supply" and "adapter" not in payload:
                 errors.append(f"{cid}: supply payload needs an 'adapter' entry-point name")
+            # Authoritative integrity/digest rule (INTRO-016): a declared
+            # canonical_digest must be a well-formed sha256 commitment
+            # (sha256:<64 hex>). A malformed digest is refused before activation
+            # — the coordinator never coalesces/conflict-checks against garbage.
+            # (A source legitimately commits a digest over its own identity
+            # subset, so we validate the commitment's FORM, not a full-payload
+            # recompute that would reject stable subset digests.)
+            declared = cand.get("canonical_digest")
+            if declared is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", declared):
+                errors.append(f"{cid}: canonical_digest is not a well-formed sha256 commitment (integrity)")
         # Deterministic conflict detection (INTRO-005/006): same candidate_id,
         # different digest -> conflict; same digest -> provenance coalesce.
         conflicts = []
