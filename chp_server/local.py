@@ -13,6 +13,42 @@ the full 12-gate admission on invocation.
 from __future__ import annotations
 
 
+class LocalArtifactPort:
+    """Artifact data plane for the served host: attaches a content-addressed
+    chp_core.ArtifactStore so /artifacts transfer lights up (artifact.transfer
+    feature truth). Refs in the control plane, bytes in the data plane."""
+
+    roles = ("ArtifactPort",)
+    source = "local"
+    requires = ("HostPort",)
+
+    def __init__(self, root: str | None = None) -> None:
+        self._root = root
+        self._attachments = None
+        self.store = None
+
+    def bind(self, attachments) -> None:
+        self._attachments = attachments
+
+    def validate(self) -> None:
+        pass
+
+    def start(self) -> None:
+        from chp_core.artifacts import ArtifactStore
+        host_port = self._attachments.for_role("HostPort") if self._attachments else None
+        host = getattr(host_port, "host", None)
+        if host is None:
+            raise RuntimeError("artifact plane requires a started HostPort attachment")
+        self.store = ArtifactStore(self._root) if self._root else ArtifactStore()
+        host.artifacts = self.store
+
+    def health(self) -> str:
+        return "ready" if self.store is not None else "unavailable"
+
+    def stop(self) -> None:
+        self.store = None
+
+
 class LocalStandalonePorts:
     """Catalog + supply + resolution for a single-host standalone server."""
 
