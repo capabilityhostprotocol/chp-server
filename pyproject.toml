@@ -37,6 +37,15 @@ Issues = "https://github.com/capabilityhostprotocol/chp-server/issues"
 [project.scripts]
 chp-server = "chp_server.cli:main"
 
+# Optional extras — NOT mandatory deps (DEC-SRV-001: chp-core is the only one). `pip install
+# chp-server[agent]` pulls chp-agentkit, the shared agent-orchestration base (model routing/aliases,
+# Skills, requirement-driven selection, fallback/readiness). A server can then construct an AgentRuntime
+# from its environment via chp_agentkit.RuntimeConfig. A first-class agent *attachment* (a
+# chp_server.ports entry-point that offers agent provisioning behind feature negotiation) is a separate
+# governed slice — this extra just makes the base installable alongside the server.
+[project.optional-dependencies]
+agent = ["chp-agentkit>=0.7,<0.8"]
+
 # Built-in attachment providers, discovered like any external ones — the server
 # treats its own ports and third-party ports identically (doc 35).
 [project.entry-points."chp_server.ports"]
