@@ -45,7 +45,7 @@ chp-server = "chp_server.cli:main"
 #     await agent_on_server(server).run("summarize the repo")   # server.attachments HostPort host
 # The server never depends on agentkit; the bridge is duck-typed on the far side.
 [project.optional-dependencies]
-agent = ["chp-agentkit>=0.8,<0.9"]
+agent = ["chp-agentkit>=0.10,<1"]   # loose duck-typed bridge; guard only a breaking 1.0 (MAJOR)
 
 # Built-in attachment providers, discovered like any external ones — the server
 # treats its own ports and third-party ports identically (doc 35).
