@@ -51,7 +51,7 @@ def test_edge_profile_ready_offline_and_reconciles_across_restart(tmp_path):
     s1.start()
     try:
         assert s1.ready() == {"ready": True, "state": "ready", "profile": "edge",
-                              "missing_required_roles": []}
+                              "role": "active", "missing_required_roles": []}
         first = _invoke(s1, {"capability_id": "demo.echo", "payload": {"text": "before"},
                              "invocation_id": "inv-edge-1"})
         assert first["outcome"] == "success"

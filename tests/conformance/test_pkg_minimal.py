@@ -47,6 +47,9 @@ def test_pkg_003_describe_reports_truth(server):
 def test_pkg_004_local_execution_required_fails_explicitly(server):
     out = server.negotiate(["invocation.local"])
     assert out["compatible"] is False and out["code"] == "feature_unsupported"
+    # DX-004: the failure names the missing SEMANTIC FEATURE, not merely a missing
+    # implementation package — the caller learns which capability is unavailable.
+    assert out["unavailable_features"] == ["invocation.local"]
 
 
 def test_pkg_005_local_resolution_fails_no_hidden_platform_call(server):

@@ -76,6 +76,10 @@ class Server:
         self._http = None
         self._thread: threading.Thread | None = None
         self._backing_host_cache = None
+        # HA ownership (HA part 2): the lease + a heartbeat thread, present only in HA mode.
+        self._lease = None
+        self._ha_stop: threading.Event | None = None
+        self._ha_thread: threading.Thread | None = None
 
     @property
     def _backing_host(self):
@@ -134,7 +138,36 @@ class Server:
         self._thread = threading.Thread(target=self._http.serve_forever, daemon=True)
         self._thread.start()
         object.__setattr__(self.identity, "started_at", utc_now())
+        if self.config.ha_enabled:
+            self._start_ha()
         self.state = ServerStatus.READY
+
+    # -- HA ownership (part 2) ----------------------------------------------
+    def _start_ha(self) -> None:
+        if not self.config.store:
+            raise RuntimeError("ha_enabled requires a shared 'store' all instances point at")
+        from .ha import OwnershipLease
+        self._lease = OwnershipLease(self.config.store, self.config.host_id)
+        ttl = self.config.ha_lease_ttl_s
+        self._lease.try_acquire(self.identity.instance_id, ttl)  # contend immediately
+        self._ha_stop = threading.Event()
+
+        def _heartbeat() -> None:
+            while not self._ha_stop.wait(max(ttl / 3.0, 0.1)):
+                try:
+                    self._lease.try_acquire(self.identity.instance_id, ttl)
+                except Exception:  # a transient store error → role() fails closed to standby
+                    pass
+
+        self._ha_thread = threading.Thread(target=_heartbeat, daemon=True)
+        self._ha_thread.start()
+
+    def role(self) -> str:
+        """`active` when this instance owns the Host (or in single-instance mode);
+        `standby` otherwise. Fail-closed via the lease (HA-005)."""
+        if self._lease is None:
+            return "active"
+        return self._lease.role(self.identity.instance_id)
 
     @property
     def port(self) -> int:
@@ -142,8 +175,12 @@ class Server:
 
     def ready(self) -> dict:
         missing = validate_profile(self.config.profile, self.attachments.ready_roles())
-        ready = self.state == ServerStatus.READY and not missing
-        return {"ready": ready, "state": self.state,
+        role = self.role()
+        # In HA, only the ACTIVE instance is "ready" to take consequential work; a
+        # standby is healthy but not ready (load balancers route consequential traffic
+        # to the active). Single-instance is always active.
+        ready = self.state == ServerStatus.READY and not missing and role == "active"
+        return {"ready": ready, "state": self.state, "role": role,
                 "profile": self.config.profile, "missing_required_roles": missing}
 
     def drain(self) -> None:
@@ -151,6 +188,11 @@ class Server:
 
     def stop(self) -> None:
         self.drain()
+        if self._ha_stop is not None:
+            self._ha_stop.set()                       # stop the heartbeat; lease then expires
+            if self._ha_thread is not None:
+                self._ha_thread.join(timeout=2.0)
+            self._ha_thread = None
         if self._http is not None:
             self._http.shutdown()
             self._http.server_close()

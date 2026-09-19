@@ -12,13 +12,17 @@ from .introduction import (
     EntryPointIntroductionPort,
     IntroductionCoordinator,
     RemoteChpIntroductionSource,
+    SourceTrustPolicy,
 )
 from .local import ExistingHostPort, LocalArtifactPort, LocalStandalonePorts
+from .resolver import DirectoryResolutionPort, advertisement_batch
 from .ports import ENTRY_POINT_GROUP, PORT_ROLES, Attachment, AttachmentRegistry
 from .profiles import CONFORMANCE_MANIFEST, PROFILES, validate_profile
 from .server import Server, ServerInstanceIdentity, ServerStatus
+from .app import CapabilityServer
 
 __all__ = [
+    "CapabilityServer",
     "Attachment",
     "AttachmentRegistry",
     "CONFORMANCE_MANIFEST",
@@ -26,6 +30,9 @@ __all__ = [
     "EntryPointIntroductionPort",
     "ExistingHostPort",
     "IntroductionCoordinator",
+    "SourceTrustPolicy",
+    "DirectoryResolutionPort",
+    "advertisement_batch",
     "LocalArtifactPort",
     "FEATURES",
     "FeatureDescriptor",

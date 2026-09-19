@@ -66,3 +66,58 @@ def test_ha_007_base_server_does_not_claim_ha(rig):
     assert "ha_mode" not in describe  # nothing advertises HA
     ha_ish = [p for p in PROFILES if "ha" in p.lower() or "multi" in p.lower()]
     assert ha_ish == []  # no HA profile is even offered
+
+def test_ha_002_indeterminate_stays_unknown_across_restart(tmp_path):
+    # HA-002: restart MUST preserve the distinction between UNKNOWN execution progress
+    # and a KNOWN terminal outcome. The terminal side is covered by the edge-profile
+    # restart test (a recorded success replays, is not re-run); this is the UNKNOWN side —
+    # an indeterminate effect recorded before a restart must NOT be coerced into
+    # success/failure by reconciliation. chp-core owns the effect model; the server
+    # preserves it across a process generation boundary.
+    from chp_core import IndeterminateExecution
+
+    host_store = str(tmp_path / "ha-host.sqlite")
+
+    def _host():
+        h = LocalCapabilityHost("ha002-host", store=SQLiteEvidenceStore(host_store))
+
+        async def unsure(_ctx, _payload):
+            raise IndeterminateExecution("effect may or may not have occurred")
+
+        h.register(CapabilityDescriptor(id="demo.unsure", version="1.0.0", description="u"), unsure)
+        return h
+
+    def _invoke(server, inv):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{server.port}/invoke",
+            data=json.dumps({"capability_id": "demo.unsure", "payload": {},
+                             "invocation_id": inv}).encode(),
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as r:
+            return json.loads(r.read())
+
+    # Gen 1: record an indeterminate (UNKNOWN) outcome under a stable invocation_id.
+    s1 = Server(ServerConfig(port=0, profile="edge", store=str(tmp_path / "s1.sqlite")))
+    s1.attach(GovernedHostPort(_host()))
+    s1.start()
+    try:
+        before = _invoke(s1, "inv-ha2")
+        assert before["outcome"] == "indeterminate" and before["success"] is False
+        corr = before["correlation"]["correlation_id"]
+    finally:
+        s1.stop()
+
+    # Gen 2: a NEW server + host over the SAME durable evidence store. The unknown
+    # outcome is NOT reconciled into a terminal, and the pre-restart evidence survives.
+    s2 = Server(ServerConfig(port=0, profile="edge", store=str(tmp_path / "s2.sqlite")))
+    s2.attach(GovernedHostPort(_host()))
+    s2.start()
+    try:
+        after = _invoke(s2, "inv-ha2")
+        assert after["outcome"] == "indeterminate"                 # still UNKNOWN
+        assert after["outcome"] not in ("success", "failure")      # never coerced to terminal
+        assert after["success"] is False
+        with urllib.request.urlopen(f"http://127.0.0.1:{s2.port}/replay/{corr}") as r:
+            assert json.loads(r.read())                            # pre-restart evidence queryable
+    finally:
+        s2.stop()

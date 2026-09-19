@@ -33,6 +33,12 @@ class ServerConfig:
     # attachments: {entry_point_name: {kwargs}} — Phase B config (doc 40 §3);
     # only listed attachments are loaded even when more are installed.
     attachments: dict[str, dict] = field(default_factory=dict)
+    # HA multi-instance (HA-003): when enabled, instances of one logical Host contend
+    # for a store-backed ownership lease; only the ACTIVE holder admits consequential
+    # work, standby refuses server_not_active. Requires a SHARED `store` all instances
+    # point at. Off = single-instance (always active). ttl = lease/heartbeat window.
+    ha_enabled: bool = False
+    ha_lease_ttl_s: float = 30.0
 
     def __post_init__(self) -> None:
         validate_environment(self.environment)

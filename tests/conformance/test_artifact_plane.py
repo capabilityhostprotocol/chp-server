@@ -77,3 +77,32 @@ def test_unsupported_without_artifact_port(tmp_path):
         assert json.loads(e.value.read())["error"]["code"] == "artifact_plane_unsupported"
     finally:
         s.stop()
+
+
+def test_data_006_retention_governed_by_policy_not_transport(tmp_path, rig):
+    # DATA-006: retention/deletion MUST be governed by an authoritative artifact/evidence
+    # POLICY (age keyed on the recorded created_at), never by transport convenience.
+    from datetime import datetime, timedelta, timezone
+
+    from chp_core.artifacts import ArtifactStore
+
+    store = ArtifactStore(str(tmp_path / "retention"))
+    ref = store.put(b"artifact bytes")
+    future = (datetime.now(timezone.utc) + timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # The POLICY decides: a 0-day horizon (evaluated in the future) removes it...
+    assert ref.artifact_id in store.apply_retention(max_age_days=0, now=future)
+    with pytest.raises(FileNotFoundError):
+        store.get(ref.artifact_id)
+    # ...while a generous horizon retains an equivalent artifact — different policy, different
+    # outcome, on the same authoritative created_at. Retention is not blanket or transport-driven.
+    ref2 = store.put(b"artifact bytes")
+    assert ref2.artifact_id not in store.apply_retention(max_age_days=365)
+    assert store.get(ref2.artifact_id)[0] == b"artifact bytes"
+
+    # And the transport plane exposes NO deletion path (no transport-convenience delete).
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{rig.port}/artifacts/{artifact_id_for(b'x')}", method="DELETE")
+    with pytest.raises(urllib.error.HTTPError) as e:
+        urllib.request.urlopen(req)
+    assert e.value.code >= 400

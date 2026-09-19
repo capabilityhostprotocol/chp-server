@@ -32,6 +32,35 @@ from importlib.metadata import PackageNotFoundError, version as _dist_version
 
 BATCH_SCHEMA_VERSION = "0.9"
 FACT_CLASSES = ("definition", "binding", "supply", "readiness", "semantic_mapping")
+# The proposal-0050 claim_type a signed introduction-batch attestation MUST carry, so a
+# signature issued for some OTHER purpose can never be replayed as batch authorization.
+INTRODUCTION_ASSERTION_CLAIM_TYPE = "capability_introduction_batch"
+
+# A staged fact commits to a CONCRETE capability version (INTRO-015 "version
+# rules"), never a range or wildcard: numeric dotted (1 to 3 components) with an
+# optional semver pre-release/build tag. Range/x-range/comparator operators
+# (^ ~ > < = x *) belong to a resolution SPEC, not to a fact's own identity —
+# accepting them here would let an ambiguous version activate as authoritative
+# truth.
+_CONCRETE_VERSION = re.compile(r"\d+(\.\d+){0,2}(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?")
+
+# "unknown" is the reserved sentinel a source emits when a real distribution
+# version cannot be resolved (EntryPointIntroductionPort.snapshot). It is an
+# honest non-claim — NOT a false concrete version and NOT a range — so it is a
+# permitted declared value; activation carries it through as unversioned.
+_VERSION_SENTINELS = ("unknown",)
+
+
+def is_concrete_version(v: object) -> bool:
+    return isinstance(v, str) and _CONCRETE_VERSION.fullmatch(v.strip()) is not None
+
+
+def is_valid_declared_version(v: object) -> bool:
+    """A declared capability version passes the INTRO-015 version rule iff it is
+    absent, the explicit ``unknown`` sentinel, or a well-formed concrete version.
+    A range/wildcard/garbage string fails — a fact must not claim an ambiguous
+    version."""
+    return v is None or v in _VERSION_SENTINELS or is_concrete_version(v)
 
 
 def canonical_digest(payload: dict) -> str:
@@ -43,12 +72,126 @@ class IntroductionError(ValueError):
     pass
 
 
+class SourceTrustPolicy:
+    """Which sources a coordinator trusts to introduce facts (INTRO-018).
+
+    Introduction is the administration/config plane (doc 77 §6), so a source is an
+    operator-configured identity; this policy is the operator's trust decision over
+    those source identities, evaluated BEFORE activation — an untrusted source's
+    candidates never become active. ``trusted_sources=None`` trusts every source
+    (today's behavior). ``source_fact_classes`` optionally narrows what a trusted
+    source may introduce (per-source scope, complementing the built-in supply
+    allowlist). Cryptographic issuer verification (a source signing its batch, the
+    coordinator checking the signature against configured anchors) is the deeper
+    follow-up and would be layered on top of this policy gate.
+    """
+
+    def __init__(self, trusted_sources=None, source_fact_classes=None,
+                 trusted_key_ids=None, require_signed=False) -> None:
+        self.trusted_sources = None if trusted_sources is None else frozenset(trusted_sources)
+        self._scopes = {k: frozenset(v) for k, v in (source_fact_classes or {}).items()}
+        # Cryptographic issuer trust (INTRO-018 deeper layer): a batch must present a
+        # signed source attestation (proposal 0050) whose signer key_id is trusted and
+        # whose signature commits to this batch. `trusted_key_ids` set (or require_signed)
+        # turns this gate ON — trust then keys on a VERIFIED issuer key, not a source_id
+        # string. None + require_signed=False keeps the string-source-id model.
+        self.trusted_key_ids = None if trusted_key_ids is None else frozenset(trusted_key_ids)
+        self.require_signed = bool(require_signed)
+
+    def trusts(self, source_id) -> bool:
+        return self.trusted_sources is None or source_id in self.trusted_sources
+
+    def allows_fact_class(self, source_id, fact_class) -> bool:
+        allowed = self._scopes.get(source_id)
+        return allowed is None or fact_class in allowed
+
+    def requires_signature(self) -> bool:
+        return self.require_signed or self.trusted_key_ids is not None
+
+    def trusts_key(self, key_id) -> bool:
+        return self.trusted_key_ids is None or key_id in self.trusted_key_ids
+
+
+def introduction_batch_commitment(batch: dict) -> str:
+    """A stable commitment over a batch's introduced content — source_id, generation,
+    and each candidate's canonical digest. A signing source puts this in its signed
+    attestation's ``value``; the coordinator recomputes it so the signature binds to
+    exactly this batch (INTRO-018 cryptographic issuer verification)."""
+    members = sorted(
+        [c.get("candidate_id"), c.get("canonical_digest") or canonical_digest(c.get("payload") or {})]
+        for c in (batch.get("candidates") or []))
+    return canonical_digest({"source_id": batch.get("source_id"),
+                             "generation": batch.get("generation"), "members": members})
+
+
+def sign_introduction_batch(batch: dict, issuer_key) -> dict:
+    """Attach a source-signed attestation (proposal 0050 assertion) binding the issuer
+    key to this batch's commitment. A coordinator under a cryptographic trust policy
+    verifies it before activation. ``issuer_key`` is a chp_core.signing.HostKey."""
+    from chp_core.signing import sign_assertion
+    assertion = {
+        "id": f"introbatch:{batch.get('source_id')}:{batch.get('generation')}",
+        "claim_type": INTRODUCTION_ASSERTION_CLAIM_TYPE,
+        "issuer": batch.get("source_id"),
+        "value": introduction_batch_commitment(batch),
+    }
+    signed = dict(batch)
+    signed["source_attestation"] = sign_assertion(issuer_key, assertion)
+    return signed
+
+
+def verify_batch_trust(batch: dict, policy: "SourceTrustPolicy | None") -> list[str]:
+    """Source/issuer trust + cryptographic verification for a batch (INTRO-018),
+    shared by ``IntroductionCoordinator.stage()`` and the resolver's wire advertisement
+    feed (RESOLVER_EDGE_DESIGN.md part 3.5) so the crypto lives in ONE place. Returns a
+    list of error strings ([] = trusted). ``None`` policy -> trust all (today's default):
+
+    - the source is trusted to introduce facts, and each candidate's fact_class is within
+      the source's declared scope; and
+    - when the policy requires a signature, the batch carries a signed source attestation
+      whose ed25519 signature verifies, whose ``claim_type`` is a capability_introduction
+      batch (no cross-purpose signature), whose signer key is a trusted issuer, and whose
+      committed value equals THIS batch's content.
+    """
+    errors: list[str] = []
+    src = batch.get("source_id")
+    if policy is not None and src is not None:
+        if not policy.trusts(src):
+            errors.append(f"source {src!r} is not trusted to introduce facts (source trust policy)")
+        else:
+            for cand in (batch.get("candidates") or []):
+                fc = cand.get("fact_class")
+                if not policy.allows_fact_class(src, fc):
+                    errors.append(f"source {src!r} is not trusted to introduce fact_class "
+                                  f"{fc!r} (source trust scope)")
+    if policy is not None and policy.requires_signature():
+        att = batch.get("source_attestation")
+        if not att:
+            errors.append("this batch requires a signed source attestation (issuer trust policy)")
+        else:
+            from chp_core.signing import verify_assertion_signature
+            ver = verify_assertion_signature(att)
+            signer = (att.get("signer_identity") or {}).get("host_id")
+            if not ver.valid:
+                errors.append(f"source attestation signature is invalid ({ver.reason})")
+            elif att.get("claim_type") != INTRODUCTION_ASSERTION_CLAIM_TYPE:
+                errors.append("source attestation is not a capability_introduction_batch assertion "
+                              "(type confusion) — a signature issued for another purpose is refused")
+            elif not policy.trusts_key(signer):
+                errors.append(f"source issuer key {signer!r} is not a trusted issuer (issuer trust policy)")
+            elif att.get("value") != introduction_batch_commitment(batch):
+                errors.append("source attestation does not commit to this batch content (integrity)")
+    return errors
+
+
 class IntroductionCoordinator:
     """stage -> validate -> conflict -> atomic activate, per source generation."""
 
-    def __init__(self, host=None, registry_path: str | None = None) -> None:
+    def __init__(self, host=None, registry_path: str | None = None,
+                 trust_policy: "SourceTrustPolicy | None" = None) -> None:
         self._host = host
         self._registry_path = registry_path  # None -> chp_core default resolution
+        self._trust_policy = trust_policy     # None -> trust all sources (today's behavior)
         # candidate_id -> {fact_class, payload, digest, sources: [source_id], generation}
         self.active: dict[str, dict] = {}
         self.generations: dict[str, str] = {}  # source_id -> active generation
@@ -61,9 +204,18 @@ class IntroductionCoordinator:
         for key in ("schema_version", "source_id", "generation", "candidates"):
             if key not in batch:
                 errors.append(f"missing batch field {key!r}")
+        # Source/issuer trust + cryptographic issuer verification (INTRO-018),
+        # evaluated BEFORE any activation. Shared with the resolver advertisement feed
+        # via verify_batch_trust (one implementation of the crypto). No policy -> trust all.
+        errors.extend(verify_batch_trust(batch, self._trust_policy))
         if not errors and batch["schema_version"] != BATCH_SCHEMA_VERSION:
             errors.append(f"unsupported schema_version {batch['schema_version']!r}")
         candidates = batch.get("candidates") or []
+        # A source declares which candidate fact classes it can introduce
+        # (INTRO-008). When declared, the coordinator refuses any candidate whose
+        # fact_class the source did not declare — a source must not introduce fact
+        # classes outside its declared scope. Absent (legacy batches) is not gated.
+        declared_classes = batch.get("declared_fact_classes")
         for cand in candidates:
             cid = cand.get("candidate_id")
             if not cid:
@@ -71,12 +223,25 @@ class IntroductionCoordinator:
                 continue
             if cand.get("fact_class") not in FACT_CLASSES:
                 errors.append(f"{cid}: invalid fact_class {cand.get('fact_class')!r}")
+            if declared_classes is not None and cand.get("fact_class") not in declared_classes:
+                errors.append(
+                    f"{cid}: fact_class {cand.get('fact_class')!r} is not among the source "
+                    f"declared_fact_classes {list(declared_classes)} (a source must not "
+                    "introduce fact classes it did not declare)")
             payload = cand.get("payload")
             if not isinstance(payload, dict) or not payload:
                 errors.append(f"{cid}: payload must be a non-empty object")
                 continue
             if cand.get("fact_class") == "supply" and "adapter" not in payload:
                 errors.append(f"{cid}: supply payload needs an 'adapter' entry-point name")
+            # Authoritative version rule (INTRO-015): a declared capability
+            # version must be a well-formed CONCRETE version, validated BEFORE
+            # activation — a fact never activates against an unparseable or
+            # range-shaped version (which would make its identity ambiguous).
+            if not is_valid_declared_version(payload.get("version")):
+                errors.append(
+                    f"{cid}: version {payload.get('version')!r} is not a well-formed concrete "
+                    "capability version (version rules)")
             # Authoritative integrity/digest rule (INTRO-016): a declared
             # canonical_digest must be a well-formed sha256 commitment
             # (sha256:<64 hex>). A malformed digest is refused before activation
@@ -263,6 +428,10 @@ class EntryPointIntroductionPort:
     roles = ("CapabilitySourcePort",)
     source = "local"
     requires = ("HostPort",)
+    # The fact classes this source can introduce (INTRO-008): installed entry
+    # points are SUPPLY facts only — never definitions, bindings, or mappings.
+    # Declared into every batch so the coordinator can refuse out-of-scope facts.
+    introduces = ("supply",)
 
     def __init__(self, adapters: list[str] | None = None,
                  source_id: str = "entry-points") -> None:
@@ -299,7 +468,8 @@ class EntryPointIntroductionPort:
         return {"schema_version": BATCH_SCHEMA_VERSION, "source_id": self.source_id,
                 "generation": canonical_digest({"members": [c["canonical_digest"]
                                                             for c in candidates]})[:23],
-                "complete_snapshot": True, "candidates": candidates}
+                "complete_snapshot": True, "declared_fact_classes": list(self.introduces),
+                "candidates": candidates}
 
     def start(self) -> None:
         host_port = self._attachments.for_role("HostPort") if self._attachments else None

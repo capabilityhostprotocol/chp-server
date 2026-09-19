@@ -29,3 +29,15 @@ def test_declared_dependencies_are_core_only():
     reqs = [r.split(";")[0].strip() for r in (requires("chp-server") or [])]
     chp_reqs = [r for r in reqs if r.lower().startswith("chp")]
     assert all(r.startswith("chp-core") for r in chp_reqs), chp_reqs
+
+
+def test_api_008_public_api_stays_small_and_extensible():
+    # API-008: the public base API stays small enough that optional features attach
+    # WITHOUT becoming part of it. The surface is bounded and exposes the entry-point
+    # attach seam; the companion purity test proves the base imports no optional
+    # package, so optional features cannot be part of this base API.
+    import chp_server
+    api = list(chp_server.__all__)
+    assert len(api) <= 24, f"public API grew to {len(api)}: {api}"
+    assert "ENTRY_POINT_GROUP" in api  # optional features attach via the entry-point group
+    assert "AttachmentRegistry" in api and "PORT_ROLES" in api  # the generic attach surface

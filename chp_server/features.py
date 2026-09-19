@@ -36,9 +36,12 @@ FEATURE_ROLES: dict[str, tuple[str, ...]] = {
     "evidence.verify": ("EvidencePort",),
     "artifact.transfer": ("ArtifactPort",),
     "federation": ("FederationPort",),
-    # Import and export are DIFFERENT bridges: exporting CHP capabilities as MCP
-    # tools exists (chp-host); importing MCP servers as capabilities does not.
-    # Separate roles keep mcp.import truthfully unsupported until one does.
+    # Import and export are DIFFERENT bridges. Exporting CHP capabilities as MCP tools
+    # exists (chp-host). Importing an MCP server's tools AS capabilities is delivered
+    # adapter-first — compose chp-adapter-mcp, each tool becomes chp.adapters.mcp.<server>.<tool>
+    # surfaced through capability.discovery (see examples/import_mcp.py). mcp.import HERE is the
+    # distinct SERVER-PORT feature (an McpImportPort attachment); no port provides it, so it
+    # stays truthfully unsupported — the adapter route, not this feature, is how you import.
     "mcp.import": ("McpImportPort",),
     "mcp.export": ("McpPort",),
 }
