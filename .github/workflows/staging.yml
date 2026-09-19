@@ -1,0 +1,48 @@
+name: Staging
+
+# Fires on release-candidate tags (v0.60.2-rc.1, v0.60.2-rc.2, …). All jobs must be green
+# before the production tag (v0.60.2) is pushed — release.yml refuses to publish without a
+# matching rc.* tag. Mirrors chp-core's RC→staging→prod discipline for this single-package repo.
+#
+# Flow:  push v<version>-rc.N → this workflow → (green) → push v<version> → release.yml.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*-rc.*'
+    branches-ignore:
+      - '**'
+
+jobs:
+  test-and-smoke:
+    name: Tests + clean-venv build smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # chp-server's only mandatory dep is chp-core (pulled from PyPI by -e .). The suite
+      # also needs pytest + the schema/crypto libs the wire tests exercise.
+      - name: Install package + test deps
+        run: python -m pip install -e . pytest jsonschema cryptography
+
+      - name: Run test suite
+        run: python -m pytest tests/ -q
+
+      - name: Build the distribution (repo root)
+        run: |
+          python -m pip install build
+          python -m build .
+
+      # Prove the built wheel installs and imports with ONLY its declared deps — the
+      # one-dependency contract (chp-core alone) that a chp-server release must honor.
+      - name: Clean-venv install + import smoke
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/python -m pip install dist/*.whl
+          /tmp/smoke/bin/python -c "import chp_server; from chp_server import CapabilityServer, Server; print('chp-server import OK')"

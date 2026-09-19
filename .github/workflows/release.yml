@@ -1,0 +1,96 @@
+name: Release
+
+# Publishes chp-server to PyPI + a GitHub Release. Fires ONLY on bare version tags
+# (v0.60.2, v1.0.0 — never rc tags, which go to staging.yml). Mirrors the chp-core
+# release flow, adapted for this single-package repo (the package is at the repo root).
+#
+# PREREQUISITE — PyPI trusted publishing (one-time, operator-side):
+#   On https://pypi.org/manage/project/chp-server/settings/publishing/ (or, if the project
+#   does not exist yet, add a "pending publisher" at https://pypi.org/manage/account/publishing/)
+#   register:  owner=capabilityhostprotocol  repo=chp-server  workflow=release.yml  environment=release
+#   No API token is stored — publishing uses OIDC (id-token: write below).
+#
+# Flow:  push v<version>-rc.N → staging.yml (green) → push v<version> → this workflow.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - '!v*.*.*-rc.*'   # RC tags → staging.yml only
+    branches-ignore:
+      - '**'             # tags only — branch pushes never trigger a release
+
+jobs:
+  verify-staged:
+    name: Verify a matching RC was staged
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository (full history for tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Confirm a matching RC tag exists
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          MATCHES=$(git tag --list "v${VERSION}-rc.*")
+          if [ -z "$MATCHES" ]; then
+            echo "ERROR: no RC tag found for v${VERSION}." >&2
+            echo "Push v${VERSION}-rc.1 and let staging.yml pass before the production tag." >&2
+            exit 1
+          fi
+          echo "Found RC tags: $MATCHES"
+
+  publish:
+    name: Build + publish chp-server to PyPI
+    needs: [verify-staged]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write     # PyPI trusted publishing (OIDC) — no stored token
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tooling
+        run: python -m pip install build
+
+      - name: Build (single package at repo root)
+        run: python -m build .
+
+      # The exact bytes built here go to BOTH PyPI and the GitHub Release.
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-chp-server
+          path: dist/
+
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true
+
+  create-release:
+    name: GitHub Release
+    needs: [publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the published dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-chp-server
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
