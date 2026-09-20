@@ -42,7 +42,8 @@ def test_decorator_infers_description_and_schema(tmp_path):
     assert d.description == "Add two numbers."                       # docstring
     assert d.input_schema == {"type": "object",
                               "properties": {"a": {"type": "integer"},
-                                             "b": {"type": "integer"}}}  # type hints
+                                             "b": {"type": "integer"}},
+                              "required": ["a", "b"]}  # type hints; no defaults -> required
 
 
 def test_served_capability_invokes_and_enforces_types(tmp_path):
