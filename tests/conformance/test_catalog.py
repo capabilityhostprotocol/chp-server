@@ -31,6 +31,41 @@ def test_capabilities_read_config_free_without_instantiating():
     assert caps[0]["description"] == "First."
 
 
+def test_dynamic_capabilities_adapter_read_via_safe_instantiation():
+    # An adapter that builds its capabilities in capabilities() (like chp-core's GitAdapter)
+    # has NO @capability method descriptors, so the static scan finds none — the catalog used
+    # to show it as "0 caps". A safe no-arg instantiation recovers them.
+    from chp_core import CapabilityDescriptor
+    from chp_core.adapters import HostedCapability
+
+    class DynamicAdapter(BaseAdapter):
+        def __init__(self, config=None):        # no-arg constructable
+            pass
+
+        def capabilities(self):
+            yield HostedCapability(
+                descriptor=CapabilityDescriptor(id="dyn.one", version="1.0.0",
+                                                description="Built at runtime."),
+                handler=lambda ctx, payload: {})
+
+    caps = _capabilities_of(DynamicAdapter)
+    assert [c["id"] for c in caps] == ["dyn.one"]
+    assert caps[0]["description"] == "Built at runtime."
+
+
+def test_config_needing_adapter_without_static_caps_stays_capless():
+    # The safe-instantiation fallback must NOT turn a config-needing adapter into an error:
+    # if __init__ raises and there are no static @capability methods, report capless.
+    class NeedsConfigNoStatic(BaseAdapter):
+        def __init__(self, config):
+            raise RuntimeError("needs configuration")
+
+        def capabilities(self):
+            return []
+
+    assert _capabilities_of(NeedsConfigNoStatic) == []
+
+
 def test_adapter_catalog_shape_tolerates_empty():
     catalog = adapter_catalog()
     assert isinstance(catalog, list)                 # empty in a bare chp-server+chp-core env

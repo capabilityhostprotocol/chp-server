@@ -12,7 +12,16 @@ import inspect
 
 
 def _capabilities_of(cls: type) -> list[dict]:
-    """(id, description) for each ``@capability`` method on an adapter class — config-free."""
+    """(id, description) for each capability an adapter class exposes.
+
+    First reads ``@capability`` method descriptors statically — config-free, no
+    instantiation (so adapters that need API keys/backends still list). If none are found,
+    the adapter likely builds its capabilities dynamically in ``capabilities()`` (e.g.
+    chp-core's GitAdapter via git_capabilities()); a static scan can't see those, so it
+    showed "0 caps". Try a SAFE no-arg instantiation to read them — an adapter that needs
+    configuration raises on ``__init__``/``capabilities()`` and is caught, staying capless
+    exactly as before (the config-free contract holds; only no-arg adapters gain coverage).
+    """
     caps: list[dict] = []
     seen: set[str] = set()
     for _name, member in inspect.getmembers(cls):
@@ -21,6 +30,17 @@ def _capabilities_of(cls: type) -> list[dict]:
         if cid and cid not in seen:
             seen.add(cid)
             caps.append({"id": cid, "description": (descriptor.description or "").strip()})
+    if not caps:
+        try:
+            for hosted in cls().capabilities():          # dynamic-capabilities() adapters
+                descriptor = getattr(hosted, "descriptor", None)
+                cid = getattr(descriptor, "id", None)
+                if cid and cid not in seen:
+                    seen.add(cid)
+                    caps.append({"id": cid,
+                                 "description": (getattr(descriptor, "description", "") or "").strip()})
+        except Exception:
+            pass  # needs config (or any error) -> report capless, config-free, unchanged
     return sorted(caps, key=lambda c: c["id"])
 
 
