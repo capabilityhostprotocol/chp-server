@@ -21,6 +21,10 @@ from .profiles import CONFORMANCE_MANIFEST, PROFILES, validate_profile
 from .server import Server, ServerInstanceIdentity, ServerStatus
 from .app import CapabilityServer
 
+# Replay / ReplayEvent (the typed /replay view) live in chp_server.replay, not the
+# top-level namespace — API-008 keeps the public surface small and curated. Advanced
+# callers use `from chp_server.replay import Replay`; the CLI imports it directly.
+
 __all__ = [
     "CapabilityServer",
     "Attachment",

@@ -25,10 +25,15 @@ classifiers = [
 ]
 # THE dependency rule (docs 34/38, DEC-SRV-001): chp-core is the ONLY mandatory
 # CHP dependency. Optional CHP packages attach via the chp_server.ports entry-point
-# group; adding one here is a PKG-009 violation and needs an approved decision.
-# Floor = last released core with the handler_class seam's prerequisites; the
-# seam itself ships in the next train release (dev tree satisfies it editable).
-dependencies = ["chp-core>=0.60.0"]
+# group; adding a NEW package here needs an approved decision. `chp-core[schema]` is
+# still one CHP dependency (chp-core) — the [schema] extra pulls jsonschema so the
+# server ENFORCES declared input schemas out of the box. Enforcement is the server's
+# whole point (a protocol lib may leave it optional; a governed server must not), so a
+# base `pip install chp-server` honors the README's "malformed calls are denied" promise
+# rather than silently no-op'ing validation. Floor = 0.60.2: the release that adds the
+# @capability(infer_schema=) parameter CapabilityServer relies on (a <0.60.2 core raises
+# TypeError on import of any decorated capability).
+dependencies = ["chp-core[schema]>=0.60.2"]
 
 [project.urls]
 Homepage = "https://github.com/capabilityhostprotocol/chp-server"

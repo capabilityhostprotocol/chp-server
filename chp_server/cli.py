@@ -37,7 +37,39 @@ def main(argv: list[str] | None = None) -> int:
                           help="Show each capability id + description.")
     adapters.add_argument("--json", action="store_true", help="Emit the catalog as JSON.")
 
+    replay = sub.add_parser(
+        "replay", help="Pretty-print a GET /replay evidence chain (JSON from stdin or --file).")
+    replay.add_argument("--file", default=None, metavar="PATH",
+                        help="Read the /replay JSON from a file instead of stdin.")
+
     args = parser.parse_args(argv)
+
+    if args.command == "replay":
+        from .replay import Replay
+        if args.file:
+            try:
+                raw = open(args.file).read()
+            except OSError as exc:
+                print(f"ERROR: {exc}", file=sys.stderr)
+                return 1
+        elif sys.stdin.isatty():
+            # No --file and an interactive stdin: NEVER block on stdin.read() (that hung a
+            # CLI invocation indefinitely). Show usage and exit instead.
+            print("chp-server replay: pipe a /replay response, or pass --file. e.g.\n"
+                  "  curl -s http://127.0.0.1:8800/replay/<correlation_id> | chp-server replay\n"
+                  "  chp-server replay --file replay.json", file=sys.stderr)
+            return 2
+        else:
+            raw = sys.stdin.read()
+        try:
+            doc = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            print(f"ERROR: input is not valid JSON ({exc}). Pipe a /replay response, e.g.:\n"
+                  "  curl -s http://127.0.0.1:8800/replay/<correlation_id> | chp-server replay",
+                  file=sys.stderr)
+            return 1
+        print(Replay.from_wire(doc).render())
+        return 0
 
     if args.command == "adapters":
         from ._catalog import adapter_catalog

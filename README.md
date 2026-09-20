@@ -7,10 +7,12 @@ signed, replayable evidence. One dependency. Runs anywhere.**
 capabilities (plain Python functions); it serves them over HTTP behind the full CHP invocation
 pipeline: identity, admission, execution, and an append-only evidence chain — plus truthful
 feature negotiation, absolute deadlines, tenant-scoped evidence, capability resolution, and
-active/standby HA. The base install depends on **`chp-core` and nothing else**.
+active/standby HA. The install pulls **one CHP package — `chp-core`** (with its `schema` extra,
+so declared input schemas are *enforced*, not just described — that is the whole point of a
+governed server).
 
 ```bash
-pip install chp-server chp-core
+pip install chp-server
 ```
 
 ---
@@ -60,6 +62,15 @@ chp-server adapters             # list installed chp-adapter-* capability sets y
 chp serve                       # a truthful protocol-only server; attach capabilities when ready
 ```
 
+Every `/invoke` prints a `correlation_id`; pipe its evidence through a readable view:
+
+```bash
+curl -s localhost:8800/replay/corr_… | chp-server replay
+#   correlation corr_…  (2 events)
+#     [9]  execution_started    greet.hello
+#     [10] execution_completed  greet.hello  → success
+```
+
 ---
 
 ## What you get that you'd otherwise build yourself
@@ -91,7 +102,8 @@ trace — needing only `chp-core` + `chp-server`. See [`examples/README.md`](exa
 
 ## The one-dependency principle
 
-The base install pulls in **only `chp-core`**. That is a deliberate contract, not an accident:
+The install pulls in **one CHP package — `chp-core`** (with its `schema` extra for input-schema
+enforcement; jsonschema is the only transitive). That is a deliberate contract, not an accident:
 a CHP server must be installable and runnable where every other CHP package is absent. Richer
 behavior — host exposure, local execution, resolution, MCP import/export, federation,
 Platform services — attaches through optional packages that register in the `chp_server.ports`
