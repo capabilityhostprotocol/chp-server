@@ -1,23 +1,46 @@
 # chp-server
 
-**A governed HTTP server for capabilities — every call is admission-gated and recorded as
-signed, replayable evidence. One dependency. Runs anywhere.**
+**Your node in CHP — a network of governed capabilities. One dependency. Runs anywhere.
+Every call is admission-gated and recorded as signed, replayable evidence.**
 
-`chp-server` is the reference implementation of the CHP *server* role. You bring a set of
-capabilities (plain Python functions); it serves them over HTTP behind the full CHP invocation
-pipeline: identity, admission, execution, and an append-only evidence chain — plus truthful
-feature negotiation, absolute deadlines, tenant-scoped evidence, capability resolution, and
-active/standby HA. The install pulls **one CHP package — `chp-core`** (with its `schema` extra,
-so declared input schemas are *enforced*, not just described — that is the whole point of a
-governed server).
+`chp-server` is how you run a **node**. A node serves capabilities (plain Python functions)
+over HTTP behind the full CHP invocation pipeline — identity, admission, execution, and an
+append-only evidence chain — plus truthful feature negotiation, absolute deadlines,
+tenant-scoped evidence, capability resolution, and active/standby HA.
+
+A node is **fully useful on its own**: run one, serve your own capabilities, and every call is
+governed and provable without another moving part. And a node can **point outward** — discover
+what other nodes serve, compose their capabilities into your own, and (as you opt in) federate
+across trust boundaries. That second axis — *governed federation* — is what makes this a network
+and not just a server. Start solo; the network compounds when you're ready. See
+[**docs/the-network.md**](docs/the-network.md) for what that unlocks.
 
 ```bash
 pip install chp-server
 ```
 
+The install pulls **one CHP package — `chp-core`** (with its `schema` extra, so declared input
+schemas are *enforced*, not just described — the whole point of a governed node).
+
+## Join the network — the ladder
+
+Each rung is complete on its own; you only climb as far as you need.
+
+| Rung | You do | You get |
+|---|---|---|
+| **1 · Run your node** | `chp serve` / `chp-server serve --example` | a live, governed, curl-able node |
+| **2 · Serve capabilities** | `@app.capability(...)` (the quickstart below) | your functions, admission-gated + evidenced |
+| **3 · Discover** | `chp-server adapters`, `GET /host`, `/.well-known/chp` | see what this node and installed adapters serve |
+| **4 · Compose** | `app.compose(SomeAdapter(...))` | reuse others' governed capabilities as your own |
+| **5 · Resolve & federate** | `GET /resolve`, federation profiles | invoke capabilities served *elsewhere*, across nodes |
+| **6 · Trust across boundaries** | signed evidence + graded trust | cross-org composition you can *prove* — the frontier |
+
+Rungs 1–2 are the whole of many deployments. Rungs 3–6 are the outward axis — see
+[the network doc](docs/the-network.md).
+
 ---
 
-## 60-second quickstart — surface a capability
+## 60-second quickstart — run a node, serve a capability
 
 ```python
 from chp_server import CapabilityServer
@@ -57,9 +80,9 @@ distribute path (see the [serving guide](docs/serving-capabilities.md)). Prefer 
 
 ```bash
 chp-server new mycaps           # scaffold a runnable starter you own, then: python mycaps.py
-chp-server serve --example      # a live server with sample capabilities, curl-able at once
+chp-server serve --example      # a live node with sample capabilities, curl-able at once
 chp-server adapters             # list installed chp-adapter-* capability sets you can compose()
-chp serve                       # a truthful protocol-only server; attach capabilities when ready
+chp serve                       # a truthful protocol-only node; attach capabilities when ready
 ```
 
 Every `/invoke` prints a `correlation_id`; pipe its evidence through a readable view:
@@ -73,9 +96,11 @@ curl -s localhost:8800/replay/corr_… | chp-server replay
 
 ---
 
-## What you get that you'd otherwise build yourself
+## What your node gives you standalone
 
-Everything below is real and exercised end-to-end by [`examples/demo.py`](examples/README.md):
+Everything below is real and exercised end-to-end by [`examples/demo.py`](examples/README.md) —
+with only `chp-core` + `chp-server` installed. This is the solo value: a node earns its keep
+before it ever talks to another one.
 
 | You get | What it means |
 |---|---|
@@ -95,7 +120,7 @@ Everything below is real and exercised end-to-end by [`examples/demo.py`](exampl
 python examples/demo.py
 ```
 
-One self-contained script stands up real servers and walks every surface above with a narrated
+One self-contained script stands up real nodes and walks every surface above with a narrated
 trace — needing only `chp-core` + `chp-server`. See [`examples/README.md`](examples/README.md).
 
 ---
@@ -104,11 +129,11 @@ trace — needing only `chp-core` + `chp-server`. See [`examples/README.md`](exa
 
 The install pulls in **one CHP package — `chp-core`** (with its `schema` extra for input-schema
 enforcement; jsonschema is the only transitive). That is a deliberate contract, not an accident:
-a CHP server must be installable and runnable where every other CHP package is absent. Richer
+a CHP node must be installable and runnable where every other CHP package is absent. Richer
 behavior — host exposure, local execution, resolution, MCP import/export, federation,
 Platform services — attaches through optional packages that register in the `chp_server.ports`
 entry-point group. **Feature truth is computed from attachment health, never from what happens
-to be installed**, so `GET /server` never overstates what the server can actually do.
+to be installed**, so `GET /server` never overstates what the node can actually do.
 
 ```python
 server.attach(ExistingHostPort(host))          # a pre-built governed host
@@ -118,8 +143,8 @@ server.attach(DirectoryResolutionPort([...]))  # answer GET /resolve
 
 ## Profiles — fail-closed by construction
 
-A **profile** declares which port roles a server *requires*; boot fails closed if one is missing,
-so a server never silently comes up under-provisioned.
+A **profile** declares which port roles a node *requires*; boot fails closed if one is missing,
+so a node never silently comes up under-provisioned.
 
 | Profile | Requires | For |
 |---|---|---|
@@ -127,7 +152,7 @@ so a server never silently comes up under-provisioned.
 | `host` | a governed host | serving your own capabilities (the quickstart above) |
 | `local` | host + execution | full local admission→execute→evidence |
 | `standalone` | + catalog/resolution | a self-describing single node |
-| `managed` / `edge` / `gateway` | Platform / federation roles | control-plane-backed and multi-host topologies |
+| `managed` / `edge` / `gateway` | Platform / federation roles | control-plane-backed and multi-node topologies |
 
 ## Endpoints
 
@@ -139,6 +164,8 @@ discovery) · `GET /capabilities` · `POST /invoke` · `GET /replay/{correlation
 
 ## Learn more
 
+- **Why this is a network, not just a server:** [`docs/the-network.md`](docs/the-network.md) —
+  the two axes, what governed federation unlocks, and the honest limits.
 - **Serve capabilities of your own:** [`docs/serving-capabilities.md`](docs/serving-capabilities.md)
   — capability anatomy, the embed and distribute paths, evidence, policy, auth, deadlines.
 - **For LLMs & agents:** [`docs/agent-integration.md`](docs/agent-integration.md) — a recipe to
