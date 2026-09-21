@@ -3,44 +3,24 @@
 **Your node in CHP — a network of governed capabilities. One dependency. Runs anywhere.
 Every call is admission-gated and recorded as signed, replayable evidence.**
 
-`chp-server` is how you run a **node**. A node serves capabilities (plain Python functions)
-over HTTP behind the full CHP invocation pipeline — identity, admission, execution, and an
-append-only evidence chain — plus truthful feature negotiation, absolute deadlines,
-tenant-scoped evidence, capability resolution, and active/standby HA.
+[![PyPI](https://img.shields.io/pypi/v/chp-server.svg)](https://pypi.org/project/chp-server/)
+[![Python](https://img.shields.io/pypi/pyversions/chp-server.svg)](https://pypi.org/project/chp-server/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-A node is **fully useful on its own**: run one, serve your own capabilities, and every call is
-governed and provable without another moving part. And a node can **point outward** — discover
-what other nodes serve, compose their capabilities into your own, and (as you opt in) federate
-across trust boundaries. That second axis — *governed federation* — is what makes this a network
-and not just a server. Start solo; the network compounds when you're ready. See
-[**docs/the-network.md**](docs/the-network.md) for what that unlocks.
+Run a **node** that serves capabilities (plain Python functions) over HTTP behind the full CHP
+pipeline — identity, admission, execution, and an append-only evidence chain, plus truthful
+feature negotiation, deadlines, and HA. A node is fully useful alone, and can point outward to
+**discover, compose, and federate** with others — *governed federation* is what makes it a
+network, not just a server ([what that unlocks](docs/the-network.md)).
 
 ```bash
 pip install chp-server
 ```
 
-The install pulls **one CHP package — `chp-core`** (with its `schema` extra, so declared input
-schemas are *enforced*, not just described — the whole point of a governed node).
+One CHP dependency — `chp-core` (with its `schema` extra, so declared input schemas are
+*enforced*, not just described: the whole point of a governed node).
 
-## Join the network — the ladder
-
-Each rung is complete on its own; you only climb as far as you need.
-
-| Rung | You do | You get |
-|---|---|---|
-| **1 · Run your node** | `chp serve` / `chp-server serve --example` | a live, governed, curl-able node |
-| **2 · Serve capabilities** | `@app.capability(...)` (the quickstart below) | your functions, admission-gated + evidenced |
-| **3 · Discover** | `chp-server adapters`, `GET /host`, `/.well-known/chp` | see what this node and installed adapters serve |
-| **4 · Compose** | `app.compose(SomeAdapter(...))` | reuse others' governed capabilities as your own |
-| **5 · Resolve & federate** | `GET /resolve`, federation profiles | invoke capabilities served *elsewhere*, across nodes |
-| **6 · Trust across boundaries** | signed evidence + graded trust | cross-org composition you can *prove* — the frontier |
-
-Rungs 1–2 are the whole of many deployments. Rungs 3–6 are the outward axis — see
-[the network doc](docs/the-network.md).
-
----
-
-## 60-second quickstart — run a node, serve a capability
+## Quickstart — run a node, serve a capability
 
 ```python
 from chp_server import CapabilityServer
@@ -93,6 +73,14 @@ curl -s localhost:8800/replay/corr_… | chp-server replay
 #     [9]  execution_started    greet.hello
 #     [10] execution_completed  greet.hello  → success
 ```
+
+## Join the network
+
+Each rung stands alone — climb only as far as you need: **run your node** (above) → **serve** your
+capabilities → **discover** what others serve (`chp-server adapters`, `GET /host`) → **compose**
+them (`app.compose(...)`) → **resolve & federate** across nodes (`GET /resolve`) → **trust across
+boundaries** with signed evidence. Rungs 1–2 are the whole of many deployments; the rest is the
+outward axis — [the network](docs/the-network.md).
 
 ## Set up with your AI agent
 
