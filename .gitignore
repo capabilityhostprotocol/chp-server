@@ -1,0 +1,13 @@
+# CHP evidence stores and session DBs must never be tracked or published.
+.chp/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+
+# Build / cache
+__pycache__/
+*.egg-info/
+.pytest_cache/
+dist/
+build/
