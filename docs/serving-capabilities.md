@@ -4,6 +4,9 @@
 HTTP service: every call is admission-gated, executed, and recorded as a signed,
 replayable evidence chain. This guide shows how to serve capabilities of your own.
 
+Serving is **rung 2 of running a node**: what you expose here is what other nodes can later
+discover, compose, and — as you opt in — federate with (see [the network](the-network.md)).
+
 There are two paths:
 
 - **[Embed](#a-embed-capabilities-in-your-program)** — build a host in your own program and
@@ -355,6 +358,8 @@ and exercises invocation, evidence, deadlines, visibility, resolution, and HA in
   codebase (wrap existing functions as capabilities, serve over HTTP/MCP).
 - **[`public-exposure.md`](public-exposure.md)** — exposing a server safely: ingress auth/mTLS,
   the governed ingress route, and egress governance.
+- **[`the-network.md`](the-network.md)** — why this is a node in a network: the two axes, what
+  governed federation unlocks, and the honest limits.
 - **[`examples/demo.py`](../examples/demo.py)** — every governed surface, runnable.
 - **[`chp-core`](https://github.com/capabilityhostprotocol/chp-core)** — the descriptor,
   evidence, signing, and the 12-gate invocation pipeline.
