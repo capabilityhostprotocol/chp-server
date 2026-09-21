@@ -186,6 +186,8 @@ authoritative capability truth is the authenticated `GET /host`.
   the two axes, what governed federation unlocks, and the honest limits.
 - **Serve capabilities of your own:** [`docs/serving-capabilities.md`](docs/serving-capabilities.md)
   — capability anatomy, the embed and distribute paths, evidence, policy, auth, deadlines.
+- **Capabilities to host:** [`docs/capabilities-to-host.md`](docs/capabilities-to-host.md) — the
+  catalog of governed adapters you can `compose()` (git, files, http, MCP, LLM inference, and more).
 - **For LLMs & agents:** [`docs/agent-integration.md`](docs/agent-integration.md) — a recipe to
   CHP-enable a codebase (wrap existing functions as governed capabilities).
 - **Expose it safely:** [`docs/public-exposure.md`](docs/public-exposure.md) — ingress auth/mTLS,
