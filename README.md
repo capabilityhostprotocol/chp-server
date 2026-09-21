@@ -188,6 +188,8 @@ authoritative capability truth is the authenticated `GET /host`.
   — capability anatomy, the embed and distribute paths, evidence, policy, auth, deadlines.
 - **Capabilities to host:** [`docs/capabilities-to-host.md`](docs/capabilities-to-host.md) — the
   catalog of governed adapters you can `compose()` (git, files, http, MCP, LLM inference, and more).
+- **Use cases (cookbook):** [`docs/use-cases.md`](docs/use-cases.md) — runnable recipes: a governed
+  file API, wrap an MCP server, serve an LLM, governed automation, CHP-enable your app.
 - **For LLMs & agents:** [`docs/agent-integration.md`](docs/agent-integration.md) — a recipe to
   CHP-enable a codebase (wrap existing functions as governed capabilities).
 - **Expose it safely:** [`docs/public-exposure.md`](docs/public-exposure.md) — ingress auth/mTLS,
