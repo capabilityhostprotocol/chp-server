@@ -3,9 +3,9 @@
 **Your node in CHP — a network of governed capabilities. One dependency. Runs anywhere.
 Every call is admission-gated and recorded as signed, replayable evidence.**
 
-[![PyPI](https://img.shields.io/pypi/v/chp-server.svg)](https://pypi.org/project/chp-server/)
-[![Python](https://img.shields.io/pypi/pyversions/chp-server.svg)](https://pypi.org/project/chp-server/)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/chp-server)](https://pypi.org/project/chp-server/)
+[![Python](https://img.shields.io/pypi/pyversions/chp-server)](https://pypi.org/project/chp-server/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 Run a **node** that serves capabilities (plain Python functions) over HTTP behind the full CHP
 pipeline — identity, admission, execution, and an append-only evidence chain, plus truthful
