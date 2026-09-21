@@ -1,0 +1,12 @@
+{
+  "name": "install-chp-server",
+  "description": "Install and stand up a chp-server node on a CHP host, then prove it with a governed, replayable invocation.",
+  "instructions": "Provision a chp-server node THROUGH this CHP host so the installation itself is evidenced. Use chp.adapters.process.run for every shell step and chp.adapters.http.request for every check; do not shell out ungoverned. Stop and defer to human approval on any step the host's policy gates.\n\n1. Preflight: run `python3 --version`. Require Python 3.11+; if lower, stop and report.\n2. Install: run `python3 -m pip install chp-server` (pulls exactly one CHP package, chp-core[schema]). Then run `python3 -c \"import chp_server, chp_core; print('ok')\"` and confirm it prints ok.\n3. Serve: run `chp-server serve --example --port 8800` as a background process (a live node with sample capabilities greet.hello, math.add, time.now).\n4. Liveness: issue an http.request GET to http://127.0.0.1:8800/health and confirm HTTP 200; GET /ready and GET /server (Server.Describe) and report the active profile and each feature's real state verbatim — never assume a feature is present.\n5. Prove a governed call: issue an http.request POST to http://127.0.0.1:8800/invoke with body {\"capability_id\": \"greet.hello\", \"payload\": {\"name\": \"CHP\"}}; confirm outcome is success and capture correlation.correlation_id.\n6. Prove evidence: issue an http.request GET to http://127.0.0.1:8800/replay/<correlation_id> and confirm the chain contains execution_started and execution_completed. The install is proven and evidenced.\n7. Report: summarize the node (profile, port), the proven capability, and the correlation id whose evidence backs the install. To serve the operator's own capabilities next, point them at `chp-server new` and docs/serving-capabilities.md.\n\nDo not add any dependency beyond chp-server to force a step to pass; the one-dependency contract is deliberate. If a step fails, report the exact command and output rather than working around it.",
+  "tools": [
+    "chp.adapters.process.run",
+    "chp.adapters.http.request"
+  ],
+  "agent_type": "tool",
+  "role": "reason",
+  "version": "1"
+}

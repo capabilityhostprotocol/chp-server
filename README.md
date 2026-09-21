@@ -94,6 +94,22 @@ curl -s localhost:8800/replay/corr_… | chp-server replay
 #     [10] execution_completed  greet.hello  → success
 ```
 
+## Set up with your AI agent
+
+Hand the setup to a coding agent. **Claude Code, Cursor, and Cline** can install and verify a node
+from [`llms-install.md`](llms-install.md) — paste this:
+
+```text
+Install and set up chp-server by following its llms-install.md. Steps: pip install chp-server;
+start a node with `chp-server serve --example --port 8800`; prove a governed call with a POST
+/invoke of greet.hello; then replay its evidence chain. Verify each step (health 200, outcome
+"success", execution_started + execution_completed) and report the correlation id. Add no
+dependency beyond chp-server.
+```
+
+Already running a CHP host? Provision the node **through** it so the install itself is evidenced —
+see [`agent/`](agent/install-chp-server.md) for a governed Agentkit skill + profile.
+
 ---
 
 ## What your node gives you standalone
