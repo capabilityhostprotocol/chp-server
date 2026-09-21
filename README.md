@@ -176,6 +176,20 @@ so a node never silently comes up under-provisioned.
 discovery) · `GET /capabilities` · `POST /invoke` · `GET /replay/{correlation}` · `GET /resolve` ·
 `GET /.well-known/chp` · `GET /capabilities.txt`
 
+## Discovery — read layer + act layer
+
+A node ships two well-known files, mirroring how agents already read the web:
+
+| Layer | File | Answers |
+|---|---|---|
+| **Read** | [`llms.txt`](llms.txt) | what's *worth reading* about this node (the llms.txt convention) |
+| **Act** | [`capabilities.txt`](capabilities.txt) | what a node can *do* — CHP's own [capabilities.txt](https://capabilitiestxt.org) convention |
+
+CHP adopts `llms.txt` and **owns the action layer**: `robots.txt` (may access) · `sitemap.xml`
+(exists) · `llms.txt` (worth reading) · **`capabilities.txt` (what a host can do)**. A live node
+serves its own at `GET /capabilities.txt` (a public hint) and bootstraps at `GET /.well-known/chp`;
+authoritative capability truth is the authenticated `GET /host`.
+
 ---
 
 ## Learn more

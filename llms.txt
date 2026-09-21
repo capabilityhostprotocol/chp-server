@@ -1,0 +1,29 @@
+# chp-server
+
+> Your node in CHP — a network of governed capabilities. Serve capabilities over HTTP where every
+> call is admission-gated and recorded as signed, replayable evidence; one dependency (chp-core).
+> This file is the AI-agent reading guide (the llms.txt convention). Its sibling — /capabilities.txt —
+> declares what a running node can *do*.
+
+## Start here
+- [README](README.md): what chp-server is, the 60-second quickstart, the "join the network" ladder, endpoints.
+- [Set up with an AI agent](llms-install.md): agent-oriented, in-order install steps — stand up a node and prove a governed invocation from only that file.
+
+## Serve & compose
+- [Serving your own capabilities](docs/serving-capabilities.md): the embed and distribute paths, evidence, policy, auth, deadlines.
+- [For LLMs & agents](docs/agent-integration.md): CHP-enable a codebase — wrap existing functions as governed capabilities.
+- [Expose it safely](docs/public-exposure.md): ingress auth/mTLS, the governed ingress route, egress governance.
+
+## Why a network
+- [The network](docs/the-network.md): the two axes (ambition × federation), what governed federation unlocks, and the honest limits.
+
+## Governed setup (for CHP operators)
+- [agent/](agent/install-chp-server.md): an Agentkit skill + profile that provisions a node *through* a CHP host, so the install itself is evidenced.
+
+## Discovery siblings
+- /capabilities.txt: what a running node can *do* — the action layer. See the file at [capabilities.txt](capabilities.txt).
+- [capabilities.txt convention](https://capabilitiestxt.org): the layers agents read — robots.txt (may access) · sitemap.xml (exists) · llms.txt (worth reading) · capabilities.txt (what a host can do). Authoritative capability truth is the authenticated live-discovery surface (GET /host); /capabilities.txt is a public, non-authoritative hint.
+
+## Protocol
+- [chp-core](https://github.com/capabilityhostprotocol/chp-core): identity, evidence, signing, the 12-gate invocation pipeline.
+- [Capability Host Protocol](https://capabilityhostprotocol.com): the invocation, governance, and evidence beneath the network.

@@ -1,0 +1,21 @@
+# capabilities.txt
+
+> chp-server — a node in CHP, a network of governed capabilities. This file declares what a node
+> can *do*: the action-layer sibling to llms.txt, per the capabilities.txt convention
+> (https://capabilitiestxt.org).
+> The capabilities below are the `chp-server serve --example` node's — a teaching aid. A real node
+> serves its OWN live list at GET /capabilities.txt; this static file is a spec-correct template.
+> Invocation: HTTP POST /invoke with {"capability_id", "payload"}. Every call is admission-gated and
+> recorded as a signed, replayable evidence chain (GET /replay/{correlation_id}).
+> Authoritative capability truth is the authenticated live-discovery surface (GET /host). This file
+> and /capabilities.txt are public, NON-authoritative hints — never an introduction authority.
+> Structured bootstrap: GET /.well-known/chp · Feature negotiation + identity: GET /server
+> Where discovery goes next — invocation, governance, evidence: https://capabilityhostprotocol.com
+
+## Example capabilities
+
+### chp-server --example node
+
+- greet.hello (v1.0.0) — Greet a name. (POST /invoke, body {"capability_id":"greet.hello","payload":{"name":"CHP"}})
+- math.add (v1.0.0) — Add two numbers. (POST /invoke, body {"capability_id":"math.add","payload":{"a":2,"b":3}})
+- time.now (v1.0.0) — Current UTC time as an ISO-8601 string. (POST /invoke, body {"capability_id":"time.now","payload":{}})
