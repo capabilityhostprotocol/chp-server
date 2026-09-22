@@ -95,6 +95,18 @@ start a node with `chp-server serve --example --port 8800`; prove a governed cal
 dependency beyond chp-server.
 ```
 
+**Go beyond the demo — CHP-enable your own code.** Point the agent at
+[`docs/agent-integration.md`](docs/agent-integration.md) and paste:
+
+```text
+CHP-enable this codebase with chp-server, following docs/agent-integration.md. Find the functions
+worth exposing, wrap each as a governed capability with app.capability("namespace.verb") (no source
+edit needed — the type hints become the enforced input schema, the docstring the description),
+compose any existing chp-adapter-* instead of reimplementing (run `chp-server adapters` to list them),
+serve with app.run(), and prove one of my capabilities with POST /invoke + /replay. Don't expose
+functions you can't type or describe.
+```
+
 Already running a CHP host? Provision the node **through** it so the install itself is evidenced —
 see [`agent/`](agent/install-chp-server.md) for a governed Agentkit skill + profile.
 

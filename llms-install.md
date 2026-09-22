@@ -42,22 +42,32 @@ curl -s http://127.0.0.1:8800/replay/<correlation_id> | chp-server replay
 **Verify:** you see `execution_started` and `execution_completed` events. The install is proven —
 a call ran the full pipeline and left a replayable, hash-chained evidence trail.
 
-## Step 4 — Serve the operator's own capabilities
-Create `mycaps.py` (or run `chp-server new mycaps` to scaffold it):
+## Step 4 — Beyond the demo: serve *this codebase's* capabilities
+The example proves the mechanics; the point is to govern **real functions**. You do **not** need to
+edit their source — wrapping is enough. In a serve module (e.g. `serve_chp.py`):
 ```python
 from chp_server import CapabilityServer
+from yourpkg import quote_price, fetch_report     # your existing functions
 
-app = CapabilityServer("my-host")
-
-@app.capability("greet.hello")
-def hello(name: str = "world") -> dict:
-    "Greet a name."
-    return {"greeting": f"hello, {name}"}
-
+app = CapabilityServer("my-service")
+app.capability("orders.quote")(quote_price)        # wrap existing funcs — no source edit
+app.capability("report.fetch")(fetch_report)
 app.run(port=8800)
 ```
-Run it with `python3 mycaps.py`. The docstring becomes the description, the type hints become the
-(enforced) input schema, and payload fields arrive as keyword arguments. Re-run Step 3 against it.
+Shaping each capability:
+- Name it **`namespace.verb`** (`orders.quote`, `text.summarize`).
+- **Type-hint the parameters** — the hints become the enforced input schema, so a malformed call is
+  denied *before your function runs*; the **docstring** is the description; payload fields arrive as
+  **keyword arguments** (write `def quote(sku, qty)`, not `def quote(payload)`).
+- For a post-admission auth failure `raise CapabilityDenied(...)`; if work can't finish now
+  `raise IndeterminateExecution(...)` — never fabricate a success.
+- **Compose existing adapters instead of reimplementing** — `app.compose(HttpAdapter())`, plus
+  filesystem, git, mcp, LLM inference, and more. Run `chp-server adapters` to list what's installed;
+  see [`docs/capabilities-to-host.md`](docs/capabilities-to-host.md).
+
+Run `python3 serve_chp.py`, then re-run Step 3 against one of *your* capabilities to prove it's
+governed and replayable. Full recipe (shaping rules, denials vs failures, compose, serving the same
+capabilities over MCP): [`docs/agent-integration.md`](docs/agent-integration.md).
 
 ## Commands & endpoints
 - Commands: `chp-server serve [--example] [--port N] [--profile P]`, `chp-server new <name>`,
