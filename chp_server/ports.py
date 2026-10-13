@@ -28,6 +28,11 @@ PORT_ROLES = (
     "McpPort",
     "McpImportPort",
     "CapabilitySourcePort",
+    # CHP Safety (CP2): lower-level safety providers. ContainmentPort constrains a
+    # material effect domain (fs/net/process/credentials); WitnessPort independently
+    # observes and may reduce/revoke/quarantine/terminate but never grants authority.
+    "ContainmentPort",
+    "WitnessPort",
 )
 
 ENTRY_POINT_GROUP = "chp_server.ports"
@@ -140,6 +145,15 @@ class AttachmentRegistry:
     def ready_roles(self) -> list[str]:
         return [r for r in PORT_ROLES if self.role_state(r) == F.READY]
 
+    def witness_independence_class(self) -> str | None:
+        """The independence class a READY WitnessPort attachment declares (e.g. "W3"), or None if no
+        witness is ready or it declares none. The class is self-reported by the attachment; a host
+        operator still anchors trust in that attachment out of band (doc 16)."""
+        if self.role_state("WitnessPort") != F.READY:
+            return None
+        a = self.for_role("WitnessPort")
+        return getattr(a, "independence_class", None) if a is not None else None
+
     def installed(self) -> list[dict]:
         return [
             {"roles": list(getattr(a, "roles", ())),
@@ -148,3 +162,31 @@ class AttachmentRegistry:
              "state": self.role_state(getattr(a, "roles", ("?",))[0])}
             for a in self._attachments
         ]
+
+
+# -- witness independence class (doc 16: a policy may require a minimum) ----------
+_WITNESS_RANK = {"W0": 0, "W1": 1, "W2": 2, "W3": 3, "W4": 4}
+
+
+def witness_class_rank(label: str | None) -> int | None:
+    """Map a witness independence label ("W3" or "W3_INDEPENDENT_HOST") to its ordinal; None if
+    unrecognized."""
+    if label is None:
+        return None
+    return _WITNESS_RANK.get(str(label).strip().upper().split("_", 1)[0])
+
+
+def unmet_witness_minimum(registry: "AttachmentRegistry", minimum: str | None) -> str | None:
+    """Reason the ready WitnessPort does NOT meet `minimum` (e.g. "W3"), or None if it does / no
+    minimum. Fail-closed: an unknown or absent witness class does not satisfy a W1+ minimum (doc 16 —
+    "a W1 observer may not satisfy a W3 requirement")."""
+    if not minimum:
+        return None
+    need = witness_class_rank(minimum)
+    if need is None:
+        return f"invalid witness minimum {minimum!r}"
+    actual = registry.witness_independence_class()
+    have = witness_class_rank(actual)
+    if have is None or have < need:
+        return f"witness independence {actual or 'unknown(<W1)'} below required minimum {minimum}"
+    return None

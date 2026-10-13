@@ -39,6 +39,10 @@ class ServerConfig:
     # point at. Off = single-instance (always active). ttl = lease/heartbeat window.
     ha_enabled: bool = False
     ha_lease_ttl_s: float = 30.0
+    # safety (doc 16): when set (e.g. "W3"), a host whose profile requires a WitnessPort is
+    # UNCLAIMABLE unless the ready witness meets this minimum independence class. None = no
+    # witness-class requirement (backward-compatible default).
+    witness_min_independence: str | None = None
 
     def __post_init__(self) -> None:
         validate_environment(self.environment)

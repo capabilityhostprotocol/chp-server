@@ -196,6 +196,13 @@ class IntroductionCoordinator:
         self.active: dict[str, dict] = {}
         self.generations: dict[str, str] = {}  # source_id -> active generation
         self.quarantine: list[dict] = []
+        # Authoritative local owner for the `binding` fact (GAP-SRV-001): a binding
+        # made live by an activation, keyed by its content-addressed binding_digest.
+        # The host still admits each INVOCATION through the 12-gate pipeline at invoke
+        # time (unchanged); this records the binding as the coordinator-owned live
+        # state an activation result realizes, so a binding fact is no longer accepted
+        # as provenance only.
+        self.bindings: dict[str, dict] = {}
 
     # -- staging -------------------------------------------------------------
     def stage(self, batch: dict) -> dict:
@@ -292,9 +299,11 @@ class IntroductionCoordinator:
                 registered_uris = self._activate_supply(cand)
             elif cand["fact_class"] == "definition":
                 self._activate_definition(cand)
-            # binding/readiness/semantic_mapping: no authoritative local owner yet
-            # (GAP-SRV-001/GAP-INTRO-003..004) — accepted as provenance-carrying
-            # facts only, no live-state integration.
+            elif cand["fact_class"] == "binding":
+                self._activate_binding(cand, digest)
+            # readiness/semantic_mapping: no authoritative local owner yet
+            # (GAP-INTRO-003..004) — accepted as provenance-carrying facts only,
+            # no live-state integration. (binding now owned — GAP-SRV-001 closed.)
             self.active[cid] = {"fact_class": cand["fact_class"], "payload": cand["payload"],
                                 "digest": digest, "sources": [source_id],
                                 "generation": batch["generation"],
@@ -327,6 +336,36 @@ class IntroductionCoordinator:
                                     version=p.get("version", "*"), enabled=False,
                                     tags=list(p.get("tags", []))),
                       self._registry_path)
+
+    def _activate_binding(self, cand: dict, digest: str) -> None:
+        """Authoritative owner for the `binding` fact (GAP-SRV-001). A binding names
+        the capability it realizes and the provider/host/executor (kept distinct even
+        when self-hosted, CHP-CORE-021); a governance change yields a new digest
+        (CHP-CAP-011), so bindings are keyed by their content-addressed digest.
+
+        This records the binding as coordinator-owned live state that an activation
+        result realizes — closing "accepted as provenance only". It does NOT grant
+        invocation authority: the host still admits each invocation through the
+        12-gate pipeline at invoke time (admission != binding, CHP-CORE-029). A
+        superseding binding for the same capability is recorded without destroying the
+        prior record (history is append-only)."""
+        payload = cand["payload"]
+        capability_id = (payload.get("capability") or {}).get("id") or payload.get("capability_id")
+        if not capability_id:
+            raise IntroductionError("a binding fact must name the capability it realizes")
+        self.bindings[digest] = {
+            "binding_digest": digest,
+            "capability_id": capability_id,
+            "provider": payload.get("provider"),
+            "host": payload.get("host"),
+            "candidate_id": cand["candidate_id"],
+            "payload": payload,
+        }
+
+    def live_binding(self, binding_digest: str) -> dict | None:
+        """The coordinator-owned live binding for a content-addressed digest, or None.
+        Lets the activation flow confirm a binding is live before invoking through it."""
+        return self.bindings.get(binding_digest)
 
     # -- withdrawal / retirement (INTRO-044/045) -----------------------------
     def withdraw_supply(self, candidate_id: str) -> list[str]:

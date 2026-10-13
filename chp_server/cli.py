@@ -7,6 +7,99 @@ import json
 import sys
 
 
+# tier → adapters to serve once provisioned (cumulative); mirrors deploy/guided-install.sh.
+_TIER_ADAPTERS = {"node": [], "containment": ["safety", "audit"], "assurance": ["safety", "audit"]}
+
+
+def _onboard(args: argparse.Namespace) -> int:
+    """pip-install onboarding: provision the chosen tier's system prerequisites through the
+    governed, evidenced capability `chp.adapters.host.bootstrap` (recorded as signed, chained
+    CHP ExecutionEvidence — no hand-rolled ledger), then bring up the governed host serving the
+    tier's adapters. Requires chp-adapter-host (install it: pip install chp-adapter-host)."""
+    import os
+    import time
+
+    try:
+        from chp_adapter_host import HostAdapter
+        from chp_adapter_host import bootstrap as _bs
+    except ModuleNotFoundError:
+        print("ERROR: onboard provisions through the governed host-bootstrap capability, which\n"
+              "       lives in chp-adapter-host. Install it first:\n"
+              "         pip install chp-adapter-host", file=sys.stderr)
+        return 1
+
+    # --plan: pure, cross-OS feasibility preview — no host, no evidence, no serve.
+    if getattr(args, "plan", False):
+        try:
+            print(_bs.render_plan(args.tier, _bs.detect_host(), with_inference=bool(args.inference)))
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        return 0
+
+    from chp_core.adapters import discover_adapters
+    from chp_server import CapabilityServer
+
+    store = args.store or os.path.join(os.path.expanduser("~/.chp-host"), "onboard.sqlite")
+    os.makedirs(os.path.dirname(store) or ".", exist_ok=True)
+    app = CapabilityServer("chp-onboard", store=store)
+    app.compose(HostAdapter())  # the governed bootstrap capability
+
+    # Compose the tier's adapters (+ any the operator named, + ollama-backed local_llm for
+    # --inference), honest-skip anything absent or needing config — never a silent half-serve.
+    available = discover_adapters()
+    want = list(args.adapters if args.adapters is not None else _TIER_ADAPTERS.get(args.tier, []))
+    if args.inference and "local_llm" not in want:
+        want.append("local_llm")
+    served, skipped = [], []
+    for name in want:
+        cls = available.get(name)
+        if cls is None:
+            skipped.append((name, "not installed")); continue
+        try:
+            app.compose(cls()); served.append(name)
+        except Exception as exc:  # noqa: BLE001 — honest skip
+            skipped.append((name, f"needs config ({type(exc).__name__})"))
+
+    # --- the governed, EVIDENCED provision step (this is the CHP-evidence record) ---
+    corr = f"onboard-{args.tier}-{int(time.time())}"
+    print(f"==> Provisioning tier {args.tier!r}"
+          + (" +inference" if args.inference else "")
+          + (" (dry-run)" if args.dry_run else "")
+          + " — governed + evidenced via chp.adapters.host.bootstrap …")
+    result = app.host.invoke(
+        "chp.adapters.host.bootstrap",
+        {"tier": args.tier, "inference": bool(args.inference), "dry_run": bool(args.dry_run)},
+        correlation_id=corr)
+    rec = getattr(result, "data", {}) or {}
+    outcome = rec.get("outcome", "unknown")
+    print(f"    outcome: {outcome}   (evidence correlation_id={corr}, store={store})")
+    for s in rec.get("steps", []):
+        print(f"      [{'ok ' if s.get('ok') else 'FAIL'}] {s.get('name')}  (exit {s.get('exit_code')})")
+    for item in rec.get("unsatisfiable", []):
+        print(f"      (honest) cannot provide {item.get('name')}: {item.get('reason')}")
+    still = (rec.get("verified_after") or {}).get("still_missing") or []
+    if still:
+        print(f"    still missing after install: {', '.join(still)}", file=sys.stderr)
+    if outcome in ("failed", "partial"):
+        print(f"    note: provision was {outcome!r} — the evidence records exactly what happened; "
+              "inspect it with  chp-server replay.", file=sys.stderr)
+
+    print(f"==> Host composed {len(served) + 1} adapter(s): host"
+          + (", " + ", ".join(served) if served else " (tier adds none)"))
+    for name, why in skipped:
+        print(f"      skipped {name}: {why}", file=sys.stderr)
+
+    if args.no_serve or args.dry_run:
+        print(f"==> Not serving (--{'no-serve' if args.no_serve else 'dry-run'}). "
+              f"Onboarding evidence recorded at {store}")
+        return 0
+    print(f"==> Serving on http://{args.bind}:{args.port} — inspect the install evidence:")
+    print(f"      curl -s http://{args.bind}:{args.port}/replay/{corr} | chp-server replay")
+    app.run(port=args.port, bind=args.bind)  # blocking
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="chp-server",
@@ -42,7 +135,33 @@ def main(argv: list[str] | None = None) -> int:
     replay.add_argument("--file", default=None, metavar="PATH",
                         help="Read the /replay JSON from a file instead of stdin.")
 
+    onboard = sub.add_parser(
+        "onboard",
+        help="Provision this host's system prerequisites for a tier (governed + evidenced via "
+             "chp.adapters.host.bootstrap), then serve. The pip-install onboarding path.")
+    onboard.add_argument("--tier", choices=["node", "containment", "assurance"], default="node",
+                         help="How deep to provision (cumulative: node ⊂ containment ⊂ assurance). "
+                              "Default: node.")
+    onboard.add_argument("--inference", action="store_true",
+                         help="Also plan a sovereign LLM backend (ollama).")
+    onboard.add_argument("--plan", action="store_true",
+                         help="Pure feasibility preview for this device — no install, no serve, no "
+                              "evidence (cross-OS; honestly skips what the hardware/OS can't provide).")
+    onboard.add_argument("--dry-run", action="store_true",
+                         help="Plan only — install nothing; still records an evidenced plan.")
+    onboard.add_argument("--no-serve", action="store_true",
+                         help="Provision + record evidence, then exit without serving.")
+    onboard.add_argument("--adapters", nargs="*", default=None, metavar="NAME",
+                         help="Adapters to serve (default: the tier's set + --inference's).")
+    onboard.add_argument("--port", type=int, default=8800)
+    onboard.add_argument("--bind", default="127.0.0.1")
+    onboard.add_argument("--store", default=None, metavar="PATH",
+                         help="Evidence store path (default ~/.chp-host/onboard.sqlite).")
+
     args = parser.parse_args(argv)
+
+    if args.command == "onboard":
+        return _onboard(args)
 
     if args.command == "replay":
         from .replay import Replay

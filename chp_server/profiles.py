@@ -14,9 +14,11 @@ PROFILES: dict[str, dict] = {
     "local": {"required_roles": _LOCAL_ROLES},
     "standalone": {"required_roles": _LOCAL_ROLES + (
         "CapabilityCatalogPort", "SupplyPort", "ResolutionPort")},
-    # managed/edge/gateway compose per deployment; their baseline required sets
-    # (doc 12 §§6-8): managed needs at least one remote-backed role declared in
-    # config; edge is local-capable; gateway mediates via federation.
+    # managed/edge/gateway compose per deployment. Per the spec (requirements.yaml: "The `managed`
+    # profile MAY delegate selected roles to CHP Platform services"), managed MAY substitute
+    # platform-backed roles (e.g. ResolutionPort) but does not REQUIRE one — a purely-local managed
+    # node is spec-compliant — so its baseline is the local set. edge is local-capable; gateway
+    # mediates via federation.
     "managed": {"required_roles": _LOCAL_ROLES},
     "edge": {"required_roles": _LOCAL_ROLES},
     "gateway": {"required_roles": ("FederationPort",)},
@@ -24,6 +26,14 @@ PROFILES: dict[str, dict] = {
     # one capability discoverable through a governed source.
     "capability-introduction": {"required_roles": ("HostPort", "CapabilitySourcePort")},
     "minimum-useful": {"required_roles": ("HostPort", "CapabilitySourcePort")},
+    # CHP Safety (CP2/G2): fail-closed runtime-assurance profiles. A missing/unready
+    # required role makes the profile unclaimable (validate_profile), so a safety host
+    # cannot run without its containment/witness controls. safety-dev requires
+    # containment; safety-prod additionally requires an independent witness and a
+    # secret broker (raw credentials never materialized to the guest).
+    "safety-dev": {"required_roles": _LOCAL_ROLES + ("ContainmentPort",)},
+    "safety-prod": {"required_roles": _LOCAL_ROLES + (
+        "ContainmentPort", "WitnessPort", "SecretPort")},
 }
 
 
@@ -44,6 +54,8 @@ CONFORMANCE_MANIFEST: dict[str, list[str]] = {
     "minimum-useful":
         ["chp_server/tests/conformance/test_introduction.py::"
          "test_intro_013_introduced_capability_still_passes_admission"],
+    "safety-dev": ["chp_server/tests/conformance/test_safety_profiles.py::test_safety_dev_fails_closed_without_containment"],
+    "safety-prod": ["chp_server/tests/conformance/test_safety_profiles.py::test_safety_prod_requires_containment_witness_secret"],
 }
 
 

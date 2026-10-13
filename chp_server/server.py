@@ -20,7 +20,7 @@ from chp_core.types import PROTOCOL_VERSION, new_id, utc_now, versions_upto
 
 from .config import ServerConfig
 from .features import FeatureRegistry
-from .ports import AttachmentRegistry
+from .ports import AttachmentRegistry, unmet_witness_minimum
 from .profiles import PROFILES, validate_profile
 
 
@@ -119,12 +119,14 @@ class Server:
         # Fail closed: a claimed profile with a missing required role must not start
         # (doc 12 §10 / doc 40 §4).
         missing = validate_profile(self.config.profile, self.attachments.ready_roles())
-        if missing:
+        witness_reason = self._witness_shortfall()
+        if missing or witness_reason:
             self.attachments.stop_all()
             self.state = ServerStatus.STOPPED
-            raise RuntimeError(
-                f"profile {self.config.profile!r} requires roles {missing} "
-                "which are absent or unready (fail-closed)")
+            detail = (f"requires roles {missing} which are absent or unready" if missing else "")
+            if witness_reason:
+                detail += ("; " if detail else "") + witness_reason
+            raise RuntimeError(f"profile {self.config.profile!r} fail-closed: {detail}")
         from chp_core.http import create_http_server
         from .http import make_handler
         # A HostPort attachment brings the governed host to serve; without one,
@@ -173,15 +175,28 @@ class Server:
     def port(self) -> int:
         return self._http.server_address[1] if self._http else self.config.port
 
+    def _witness_shortfall(self) -> str | None:
+        """Doc 16: when a witness minimum is configured and the profile requires a WitnessPort, the
+        host is unclaimable unless the ready witness meets that minimum class. Opt-in: None otherwise."""
+        if self.config.witness_min_independence and \
+                "WitnessPort" in PROFILES[self.config.profile]["required_roles"]:
+            return unmet_witness_minimum(self.attachments, self.config.witness_min_independence)
+        return None
+
     def ready(self) -> dict:
         missing = validate_profile(self.config.profile, self.attachments.ready_roles())
+        witness_reason = self._witness_shortfall()
         role = self.role()
         # In HA, only the ACTIVE instance is "ready" to take consequential work; a
         # standby is healthy but not ready (load balancers route consequential traffic
         # to the active). Single-instance is always active.
-        ready = self.state == ServerStatus.READY and not missing and role == "active"
-        return {"ready": ready, "state": self.state, "role": role,
-                "profile": self.config.profile, "missing_required_roles": missing}
+        ready = (self.state == ServerStatus.READY and not missing
+                 and witness_reason is None and role == "active")
+        out = {"ready": ready, "state": self.state, "role": role,
+               "profile": self.config.profile, "missing_required_roles": missing}
+        if witness_reason is not None:
+            out["witness_minimum_unmet"] = witness_reason
+        return out
 
     def drain(self) -> None:
         self.state = ServerStatus.DRAINING

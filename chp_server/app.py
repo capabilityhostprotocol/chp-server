@@ -40,9 +40,15 @@ if TYPE_CHECKING:
 class CapabilityServer:
     """A host you decorate capabilities onto, then serve."""
 
-    def __init__(self, host_id: str = "chp-server", *, store: str | None = None) -> None:
-        self.host = LocalCapabilityHost(
-            host_id, store=SQLiteEvidenceStore(store or f"{host_id}.sqlite"))
+    def __init__(self, host_id: str = "chp-server", *, store: "str | Any | None" = None) -> None:
+        # ``store``: None or a path str -> a SQLiteEvidenceStore at that path (default:
+        # a per-host file). Any OTHER object is treated as a ready evidence store and
+        # injected verbatim — the store is duck-typed (no ABC), so an external store
+        # (Postgres, a mesh-forwarding store, ...) works through this public sugar
+        # instead of forcing callers down to LocalCapabilityHost directly.
+        evidence = (SQLiteEvidenceStore(store or f"{host_id}.sqlite")
+                    if store is None or isinstance(store, str) else store)
+        self.host = LocalCapabilityHost(host_id, store=evidence)
 
     def capability(self, id: str, *, version: str = "1.0.0",
                    description: str | None = None,

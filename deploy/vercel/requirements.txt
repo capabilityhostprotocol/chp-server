@@ -1,0 +1,6 @@
+# Runtime deps for the CHP-server-on-Vercel function.
+# chp-server pulls chp-core[schema] (the enforcing protocol core). Slice 1 bakes only
+# hand-written deterministic capabilities, so no chp-adapter-* wheel is required here;
+# add adapter wheels to this file to bake more capabilities into the deployment (Axis 2).
+fastapi>=0.117.1
+chp-server>=0.60.4
